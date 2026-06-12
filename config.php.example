@@ -1,0 +1,16 @@
+<?php
+// ============================================================
+// データベース接続設定（テンプレート）
+// このファイルを config.php にコピーし、Xサーバーの
+// 「サーバーパネル → MySQL設定」で作成した値に書き換えてください。
+//   cp config.php.example config.php
+// ※ config.php は .gitignore 済み（Gitには上げない）
+// ============================================================
+return [
+  // Xサーバーは通常 'localhost' でOK（MySQL設定画面に「MySQLホスト名」があればそれを使用）
+  'db_host'    => 'localhost',
+  'db_name'    => 'あなたのDB名',        // 例: xxxx_colorhrm
+  'db_user'    => 'あなたのDBユーザー名', // 例: xxxx_chrm
+  'db_pass'    => 'あなたのDBパスワード',
+  'db_charset' => 'utf8mb4',
+];
