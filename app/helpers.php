@@ -40,6 +40,32 @@ function training_target_colors() {
 }
 
 // ------------------------------------------------------------
+// 採用（candidates）の選択肢
+// ------------------------------------------------------------
+function candidate_selection_results() {
+  return ['採用', '不採用(書類)', '不採用(面接後)', '辞退(面接前)', '辞退(面接後)', 'お断り', '音信不通', 'その他'];
+}
+
+function candidate_employment_types() {
+  return ['アルバイト', '社員：新卒', '社員：中途'];
+}
+
+// 選考結果のバッジ色
+function selection_badge_class($s) {
+  switch ($s) {
+    case '採用':           return 'bg-success';
+    case '不採用(書類)':
+    case '不採用(面接後)': return 'bg-danger';
+    case '辞退(面接前)':
+    case '辞退(面接後)':   return 'bg-secondary';
+    case 'お断り':         return 'bg-dark';
+    case '音信不通':       return 'bg-warning text-dark';
+    case '':               return 'bg-light text-dark border'; // 未選考
+    default:               return 'bg-info text-dark';
+  }
+}
+
+// ------------------------------------------------------------
 // 権限制御
 // ------------------------------------------------------------
 function require_role($roles) {
@@ -84,8 +110,10 @@ function nav_links_for($role) {
     $links['mypage.php'] = 'マイページ';
   }
   if ($role === 'admin' || $role === 'staff') {
-    $links['index.php']    = '講師一覧';
-    $links['training.php'] = '研修管理';
+    $links['dashboard.php']  = 'ダッシュボード';
+    $links['candidates.php'] = '採用';
+    $links['index.php']      = '講師一覧';
+    $links['training.php']   = '研修管理';
   }
   if ($role === 'admin') {
     $links['training_master.php'] = '研修マスター';
