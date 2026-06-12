@@ -148,9 +148,21 @@ GitHub リポジトリの **Settings → Secrets and variables → Actions** で
 
 ### 8.2 使い方
 
-- **自動**：`main` に `app/` の変更を含む push をすると走る。
-- **手動**：Actions タブ → 「Deploy to Xserver」→ Run workflow。
-  `Dry run` にチェックすると、**アップロードせず**「何が上がるか」だけ確認できる（初回の動作確認に推奨）。
+- **自動**：`main` に `app/` の変更を含む push（PRのマージ含む）をすると走る。
+- **手動**：Actions タブ → 「Deploy to Xserver」→ Run workflow。`Dry run` で差分のみ確認できる。
+  - ⚠️ **この手動ボタンは、ワークフローが `main` に乗ってから（＝初回マージ後）しか表示されません**
+    （GitHubの仕様）。**初回デプロイはマージ時に本番アップロードが走ります**（Dry run は使えません）。
+
+### 8.2.1 初回デプロイの安全な順序
+
+1. `FTP_SERVER_DIR` の値を確定（**ここだけ要注意**）。
+   FTPクライアントで既存の `colorhrm/` を開き、表示されるパスを確認するのが確実。
+   FTPアカウントのホームが web 公開領域なら `/colorhrm/` のように短くなる場合がある。
+2. Secrets（`FTP_SERVER` / `FTP_USERNAME` / `FTP_PASSWORD`）と必要なら Variable `FTP_SERVER_DIR` を登録。
+3. PR を `main` にマージ → 自動デプロイ。Actions のログで上がったファイルを確認。
+4. 2回目以降は、手動 Run workflow の `Dry run` で事前確認できるようになる。
+
+> 初回の配置先パスが不安な場合は、**初回だけ手動FTPアップロード**し、以降を自動デプロイに任せる手もある。
 
 ### 8.3 仕様・注意
 
