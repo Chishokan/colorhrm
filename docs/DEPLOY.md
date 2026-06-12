@@ -1,0 +1,125 @@
+# デプロイ手順（Xサーバー）
+
+Color HRM（Xサーバー版）を本番 `https://chishokan.co.jp/colorhrm/` に反映する手順です。
+初回と2回目以降（更新）に分けて記載します。
+
+---
+
+## 0. 前提・環境情報
+
+| 項目 | 値 |
+| :-- | :-- |
+| 公開URL | https://chishokan.co.jp/colorhrm/ |
+| 配置パス | `/chishokan.co.jp/public_html/colorhrm/` |
+| MySQLホスト | **mysql8055.xserver.jp**（★`localhost` 不可） |
+| DB名 | chishokan_colorhrm |
+| DBユーザー | chishokan_chrm |
+
+> ⚠️ ハマりどころ（必ず守る）
+> 1. **DBホストは `mysql8055.xserver.jp`**。`localhost` にすると `Access denied ...@'localhost'` で全画面500/白画面。
+> 2. **デプロイは必ず「ファイルのアップロード」**（FTP/SFTP もしくはファイルマネージャの［アップロード］）。
+>    Web編集画面で新規ファイルを作って中身を貼り付ける方法は**保存されず空ファイル**になり、白画面の原因になる。
+> 3. **MySQL 5.7 は `ADD COLUMN IF NOT EXISTS` 非対応**。マイグレーションは**1回だけ**実行（再実行は Duplicate column）。
+> 4. **白画面＝PHP致命的エラー**（本番は `display_errors` OFF）。原因切り分けは下記「トラブルシュート」参照。
+
+---
+
+## 1. アップロードするファイル
+
+`app/` 配下の **PHP 一式**を `colorhrm/` へ置きます。
+
+**アップロードする**
+```
+db.php  auth.php  helpers.php
+index.php  mypage.php  login.php  logout.php
+training.php  training_master.php  users.php
+config.php   ← サーバー上にのみ作る実値版（下記2参照）
+```
+
+**アップロードしない**
+```
+config.php.example   （テンプレートのため不要）
+README.md            （説明用）
+migrations/ 配下      （SQLは phpMyAdmin で実行。アップロード不要）
+.gitignore / docs/    （リポジトリ管理用）
+```
+
+---
+
+## 2. config.php を作る（実DB接続情報・サーバー上のみ）
+
+`config.php` は Git 管理外。サーバー上で `config.php.example` を元に実値版を作ります。
+
+`app/config.php`（サーバーの `colorhrm/config.php`）の中身:
+```php
+<?php
+return [
+  'db_host'    => 'mysql8055.xserver.jp', // ★localhost不可
+  'db_name'    => 'chishokan_colorhrm',
+  'db_user'    => 'chishokan_chrm',
+  'db_pass'    => '（XサーバーのMySQL設定で設定したパスワード）',
+  'db_charset' => 'utf8mb4',
+];
+```
+> ローカルで作って FTP で上げてもよいし、ファイルマネージャの［アップロード］で上げてもOK。
+> （Web編集で新規作成→貼り付けは保存されないので不可）
+
+---
+
+## 3. 初回デプロイ手順
+
+1. **DB作成**：サーバーパネル →［MySQL設定］で DB（chishokan_colorhrm）と DBユーザー（chishokan_chrm）を作成し、ユーザーにDBへのアクセス権を付与。
+2. **スキーマ適用**：phpMyAdmin で対象DBを選び［SQL］タブに以下を順に貼り付けて実行。
+   - `schema.sql`（PoC初期：tenants / users / staff）※適用済みならスキップ
+   - `migrations/001_phase1-2.sql`（フェーズ1〜2）※適用済みならスキップ
+   - `migrations/002_phase3.sql`（フェーズ3：申告/承認列）← **今回の新規**
+3. **ファイルアップロード**：`app/` 配下のPHP一式を `colorhrm/` へアップロード（上記1）。
+4. **config.php 配置**：実値版を `colorhrm/config.php` に置く（上記2）。
+5. **初期管理者作成**：管理者ユーザーが未作成なら作る（`setup.php` を使う場合は **使用後すぐ削除**）。
+   既に `admin@chishokan.local` がある場合は不要。
+6. **動作確認**：`https://chishokan.co.jp/colorhrm/login.php` → ログイン → 講師一覧。
+   admin なら ナビに「研修管理 / 研修マスター / ユーザー管理」が出る。
+
+---
+
+## 4. 2回目以降（更新）の手順
+
+コードだけ変えた場合（スキーマ変更なし）:
+1. 変更した `app/` 配下のPHPを `colorhrm/` へ**上書きアップロード**。
+2. ブラウザで対象画面を再読み込みして確認。
+
+スキーマ変更を伴う場合:
+1. 先に phpMyAdmin で**新しい番号のマイグレーション**（例 `003_*.sql`）を1回だけ実行。
+2. その後にPHPをアップロード（順序を守る。列が無い状態で新コードが動くとエラーになるため）。
+
+> `config.php` は**上書きしない**（実値が消えるため）。常にアップロード対象から除外。
+
+---
+
+## 5. 今回（フェーズ3）の更新でやること
+
+1. phpMyAdmin で **`migrations/002_phase3.sql` を1回実行**。
+2. `colorhrm/` へ以下をアップロード：
+   - 新規：`helpers.php` `mypage.php` `training.php` `training_master.php` `users.php`
+   - 更新：`index.php`（共通ナビ対応）
+3. admin でログイン →「研修マスター」で項目登録 →「ユーザー管理」で各講師に `staff_id` を紐付け →
+   teacher でログインして「マイページ」から申告 → admin で承認、まで通しで確認。
+
+---
+
+## 6. トラブルシュート
+
+- **白画面（何も出ない）**：PHP致命的エラー。多くは `config.php` の `db_host` が `localhost` のまま、
+  または `config.php` が空（Web編集で作って保存されていない）。アップロードで置き直す。
+- **`Access denied for user 'chishokan_chrm'@'localhost'`**：`db_host` を `mysql8055.xserver.jp` に。
+- **`Duplicate column ...`**：マイグレーションの再実行。その行は適用済みなので無視してよい。
+- **エラー内容を見たい**：一時的な診断PHP（`ini_set('display_errors',1); ini_set('display_startup_errors',1); error_reporting(E_ALL);` を先頭に置いたファイル）をアップして実エラーを確認。**確認後は必ず削除**。
+
+---
+
+## 7. セキュリティ・チェックリスト
+
+- [ ] `config.php` は Git に上げない（`.gitignore` 済み）
+- [ ] `setup.php` / `_test.php` は使用後にサーバーから**削除**
+- [ ] 初期管理者パスワード `admin1234` を「ユーザー管理」画面から**変更**
+- [ ] 診断用に上げた一時PHPは**削除**
