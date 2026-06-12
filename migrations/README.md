@@ -6,10 +6,12 @@ Xサーバー版 Color HRM のDBマイグレーション置き場です。
 | ファイル | 内容 |
 |---|---|
 | `001_phase1-2.sql` | フェーズ1（権限・マイページ）＋フェーズ2（研修）。`users.staff_id` 追加、`staff` の16列化、`training_items` / `training_progress` 作成。**本番適用済み（2026-06-12）**。 |
+| `002_phase3.sql` | フェーズ3（申告承認）。`training_progress` に `declared_by/at`・`approved_by/at` を追加。status に「申告中」「差戻し」を運用追加。**未適用**。 |
 
 ## 実行順
 1. 既存の `schema.sql`（tenants / users / staff）を流す
 2. `001_phase1-2.sql` を流す
+3. `002_phase3.sql` を流す
 
 ## 注意
 - MySQL 5.7 は `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` 非対応のため、
