@@ -123,3 +123,41 @@ return [
 - [ ] `setup.php` / `_test.php` は使用後にサーバーから**削除**
 - [ ] 初期管理者パスワード `admin1234` を「ユーザー管理」画面から**変更**
 - [ ] 診断用に上げた一時PHPは**削除**
+
+---
+
+## 8. 自動デプロイ（GitHub Actions）
+
+`main` に push すると、`app/` 配下が Xサーバーへ FTPS で自動アップロードされます
+（ワークフロー: `.github/workflows/deploy.yml`）。手動アップロードの代替です。
+
+### 8.1 初期設定（1回だけ）
+
+GitHub リポジトリの **Settings → Secrets and variables → Actions** で登録:
+
+| 種別 | 名前 | 値 |
+| :-- | :-- | :-- |
+| Secret | `FTP_SERVER` | FTPホスト名（例: `sv8550.xserver.jp`。サーバーパネル［FTPアカウント設定］のホスト） |
+| Secret | `FTP_USERNAME` | FTPユーザー名 |
+| Secret | `FTP_PASSWORD` | FTPパスワード |
+| Variable（任意） | `FTP_SERVER_DIR` | 配置先。既定 `/chishokan.co.jp/public_html/colorhrm/`。**末尾スラッシュ必須** |
+
+> FTPアカウントは サーバーパネル →［FTPアカウント設定］で作成・確認。
+> `FTP_SERVER_DIR` はそのFTPアカウントのホーム基準のパス。ホームが既に `public_html` の場合は
+> `/colorhrm/` のように短くなることがあるので、初回は **dry-run** で確認するのが安全。
+
+### 8.2 使い方
+
+- **自動**：`main` に `app/` の変更を含む push をすると走る。
+- **手動**：Actions タブ → 「Deploy to Xserver」→ Run workflow。
+  `Dry run` にチェックすると、**アップロードせず**「何が上がるか」だけ確認できる（初回の動作確認に推奨）。
+
+### 8.3 仕様・注意
+
+- 対象は `app/` の中身のみ。`config.php`（実値）/ `config.php.example` / `README.md` は**除外**（上書き・削除されない）。
+- **差分アップロード**：サーバー上の `.ftp-deploy-sync-state.json` で前回との差分のみ転送。
+- **DBマイグレーションは対象外**。スキーマ変更がある時は、先に phpMyAdmin で該当SQLを実行してから push すること
+  （列が無い状態で新コードが動くとエラーになるため）。
+- FTPS で接続できない場合は、ワークフローの `protocol: ftps` を `ftp` に変更。
+- 開発ブランチ（`claude/...`）では走らない。本番反映は `main` へのマージが起点。
+
