@@ -1,0 +1,18 @@
+<?php
+// ============================================================
+// データベース接続設定（テンプレート）
+// このファイルを config.php にコピーし、Xサーバーの
+// 「サーバーパネル → MySQL設定」で作成した値に書き換えてください。
+//   cp config.php.example config.php
+// ※ config.php は .gitignore 済み（Gitには上げない）
+// ============================================================
+return [
+  // ★最重要：Xサーバーは 'localhost' 不可。サーバーパネル「MySQL設定」の
+  //   「MySQLホスト名」を必ず指定する（例: mysql8055.xserver.jp）。
+  //   localhost にすると Access denied ...@'localhost' で全画面500/白画面になる。
+  'db_host'    => 'mysqlXXXX.xserver.jp', // 例: mysql8055.xserver.jp
+  'db_name'    => 'あなたのDB名',        // 例: chishokan_colorhrm
+  'db_user'    => 'あなたのDBユーザー名', // 例: chishokan_chrm
+  'db_pass'    => 'あなたのDBパスワード',
+  'db_charset' => 'utf8mb4',
+];
