@@ -34,6 +34,11 @@ function color_style($c) {
   return $map[$c] ?? 'background:#eee;color:#555';
 }
 
+// 育成目標になり得るカラー（WHITE は開始点なので対象外）
+function training_target_colors() {
+  return ['GREEN', 'BLUE', 'YELLOW', 'RED'];
+}
+
 // ------------------------------------------------------------
 // 権限制御
 // ------------------------------------------------------------
@@ -83,7 +88,8 @@ function nav_links_for($role) {
     $links['training.php'] = '研修管理';
   }
   if ($role === 'admin') {
-    $links['users.php'] = 'ユーザー管理';
+    $links['training_master.php'] = '研修マスター';
+    $links['users.php']           = 'ユーザー管理';
   }
   return $links;
 }
