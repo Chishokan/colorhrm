@@ -7,10 +7,12 @@
 // ※ config.php は .gitignore 済み（Gitには上げない）
 // ============================================================
 return [
-  // Xサーバーは通常 'localhost' でOK（MySQL設定画面に「MySQLホスト名」があればそれを使用）
-  'db_host'    => 'localhost',
-  'db_name'    => 'あなたのDB名',        // 例: xxxx_colorhrm
-  'db_user'    => 'あなたのDBユーザー名', // 例: xxxx_chrm
+  // ★最重要：Xサーバーは 'localhost' 不可。サーバーパネル「MySQL設定」の
+  //   「MySQLホスト名」を必ず指定する（例: mysql8055.xserver.jp）。
+  //   localhost にすると Access denied ...@'localhost' で全画面500/白画面になる。
+  'db_host'    => 'mysqlXXXX.xserver.jp', // 例: mysql8055.xserver.jp
+  'db_name'    => 'あなたのDB名',        // 例: chishokan_colorhrm
+  'db_user'    => 'あなたのDBユーザー名', // 例: chishokan_chrm
   'db_pass'    => 'あなたのDBパスワード',
   'db_charset' => 'utf8mb4',
 ];
