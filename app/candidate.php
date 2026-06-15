@@ -338,8 +338,8 @@ render_header($isNew ? '新規応募者' : '応募者: ' . ($c['name'] ?? ''), $
 
     <?php if (!$isNew): ?>
       <p class="text-muted small mt-2">
-        履歴書アップロード・OCR（フェーズ4-3）は方針決定後に追加予定。
         OCR処理済み: <?= $c['ocr_extracted'] ? '✓' : '—' ?>
+        <?php if (!ocr_enabled()): ?>（OCRを有効化するには config.php に vision_api_key を設定）<?php endif; ?>
       </p>
     <?php endif; ?>
   </div>
