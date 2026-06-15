@@ -61,6 +61,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
          . " WHERE id = ?";
     db()->prepare($sql)->execute([$id]);
     $flash = '復職として登録しました。';
+  } elseif ($action === 'add_meeting') {
+    $mdate   = trim($_POST['meeting_date'] ?? '') ?: null;
+    $content = trim($_POST['content'] ?? '');
+    $ndate   = trim($_POST['next_date'] ?? '') ?: null;
+    $mentor  = trim($_POST['mentor_name'] ?? '') ?: (current_user()['display_name'] ?? '');
+    if ($content === '' && $mdate === null) {
+      $err = '面談日または内容を入力してください。';
+    } else {
+      db()->prepare("INSERT INTO meetings (tenant_id, staff_id, meeting_date, mentor_name, content, next_date) VALUES (1, ?, ?, ?, ?, ?)")
+          ->execute([$id, $mdate, $mentor, $content, $ndate]);
+      $flash = '面談記録を追加しました。';
+    }
+  } elseif ($action === 'delete_meeting') {
+    db()->prepare("DELETE FROM meetings WHERE id = ? AND staff_id = ?")->execute([(int)($_POST['meeting_id'] ?? 0), $id]);
+    $flash = '面談記録を削除しました。';
   }
 }
 
@@ -219,5 +234,90 @@ render_header('講師: ' . $s['name'], $user, 'index.php');
         <?php endif; ?>
       </div>
     </div>
+
+    <!-- 1on1 面談 -->
+    <?php
+      $meetings = [];
+      try {
+        $mq = db()->prepare("SELECT * FROM meetings WHERE staff_id = ? ORDER BY meeting_date DESC, id DESC");
+        $mq->execute([$id]); $meetings = $mq->fetchAll();
+        $hasMeetings = true;
+      } catch (Throwable $e) { $hasMeetings = false; } // テーブル未作成（006未適用）でも他機能は動く
+    ?>
+    <?php if ($hasMeetings): ?>
+    <div class="card shadow-sm my-3">
+      <div class="card-header">1on1 面談</div>
+      <div class="card-body">
+        <form method="post" class="row g-2 align-items-end mb-3">
+          <?= csrf_field() ?>
+          <input type="hidden" name="action" value="add_meeting">
+          <div class="col-md-2">
+            <label class="form-label small mb-0">面談日</label>
+            <input name="meeting_date" type="date" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small mb-0">担当</label>
+            <input name="mentor_name" class="form-control form-control-sm" value="<?= h($user['display_name'] ?: '') ?>">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small mb-0">内容</label>
+            <input name="content" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small mb-0">次回</label>
+            <input name="next_date" type="date" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-2"><button class="btn btn-sm btn-primary w-100">記録追加</button></div>
+        </form>
+        <?php if (!$meetings): ?>
+          <div class="text-muted small">まだ面談記録はありません。</div>
+        <?php else: ?>
+          <table class="table table-sm align-middle mb-0">
+            <thead class="table-light"><tr><th style="width:110px">面談日</th><th>内容</th><th style="width:90px">担当</th><th style="width:110px">次回</th><th></th></tr></thead>
+            <tbody>
+              <?php foreach ($meetings as $m): ?>
+                <tr>
+                  <td class="small"><?= h($m['meeting_date'] ?: '—') ?></td>
+                  <td class="small"><?= nl2br(h($m['content'])) ?></td>
+                  <td class="small"><?= h($m['mentor_name']) ?></td>
+                  <td class="small"><?= h($m['next_date'] ?: '') ?></td>
+                  <td class="text-end">
+                    <form method="post" class="d-inline" onsubmit="return confirm('削除しますか？');">
+                      <?= csrf_field() ?>
+                      <input type="hidden" name="action" value="delete_meeting">
+                      <input type="hidden" name="meeting_id" value="<?= (int)$m['id'] ?>">
+                      <button class="btn btn-sm btn-link text-danger p-0">削除</button>
+                    </form>
+                  </td>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        <?php endif; ?>
+      </div>
+    </div>
+    <?php endif; ?>
+
+    <!-- 質問への回答（参照） -->
+    <?php
+      $answers = [];
+      try {
+        $aq = db()->prepare("SELECT q.text, a.answer, a.answered_at
+                               FROM answers a JOIN questions q ON q.id = a.question_id
+                              WHERE a.staff_id = ? ORDER BY a.answered_at DESC");
+        $aq->execute([$id]); $answers = $aq->fetchAll();
+        $hasAnswers = true;
+      } catch (Throwable $e) { $hasAnswers = false; }
+    ?>
+    <?php if ($hasAnswers && $answers): ?>
+    <div class="card shadow-sm my-3">
+      <div class="card-header">質問への回答</div>
+      <div class="card-body">
+        <?php foreach ($answers as $a): ?>
+          <div class="mb-2"><div class="small text-muted"><?= h($a['text']) ?></div><div><?= nl2br(h($a['answer'])) ?></div></div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <?php endif; ?>
   </div>
 <?php render_footer(); ?>
