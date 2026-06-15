@@ -207,6 +207,7 @@ function nav_links_for($role) {
   }
   if ($role === 'admin') {
     $links['training_master.php'] = '研修マスター';
+    $links['lessons.php']         = '研修動画';
     $links['questions.php']       = '質問';
     $links['import.php']          = 'データ移行';
     $links['users.php']           = 'ユーザー管理';
@@ -282,6 +283,35 @@ function save_resume_upload($candidateId, $file) {
     if (!@rename($file['tmp_name'], $dest)) {
       throw new RuntimeException('ファイルの保存に失敗しました。');
     }
+  }
+  return $name;
+}
+
+// 研修テストの証跡画像（PII性は低いが認証付き配信）
+function evidence_dir() {
+  return __DIR__ . '/uploads/evidence';
+}
+function save_evidence_upload($staffId, $itemId, $file) {
+  if (!isset($file['error']) || $file['error'] !== UPLOAD_ERR_OK) {
+    throw new RuntimeException('アップロードに失敗しました。');
+  }
+  if ($file['size'] > 8 * 1024 * 1024) { throw new RuntimeException('ファイルが大きすぎます（上限8MB）。'); }
+  $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+  $allowed = resume_allowed_ext();
+  $finfo = finfo_open(FILEINFO_MIME_TYPE);
+  $mime  = finfo_file($finfo, $file['tmp_name']);
+  finfo_close($finfo);
+  if (!isset($allowed[$ext]) || !in_array($mime, $allowed, true)) {
+    throw new RuntimeException('JPG / PNG 画像のみアップロードできます。');
+  }
+  $dir = evidence_dir();
+  if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
+    throw new RuntimeException('保存先を作成できません。');
+  }
+  $name = 'ev' . (int)$staffId . '_' . (int)$itemId . '_' . date('YmdHis') . '_' . bin2hex(random_bytes(3)) . '.' . $ext;
+  $dest = $dir . '/' . $name;
+  if (!move_uploaded_file($file['tmp_name'], $dest) && !@rename($file['tmp_name'], $dest)) {
+    throw new RuntimeException('ファイルの保存に失敗しました。');
   }
   return $name;
 }
