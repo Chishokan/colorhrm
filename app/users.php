@@ -77,6 +77,10 @@ render_header('ユーザー管理', $user, 'users.php');
 ?>
   <div class="container py-4">
 
+    <div class="d-flex justify-content-end mb-2">
+      <a href="staff_accounts.php" class="btn btn-sm btn-success">講師アカウント一括作成</a>
+    </div>
+
     <?php if ($flash): ?><div class="alert alert-success py-2"><?= h($flash) ?></div><?php endif; ?>
     <?php if ($err): ?><div class="alert alert-danger py-2"><?= h($err) ?></div><?php endif; ?>
 

@@ -22,7 +22,7 @@ render_header('Color HRM 講師一覧', $user, 'index.php');
           <div class="card h-100 shadow-sm">
             <div class="card-body">
               <div class="d-flex justify-content-between align-items-start mb-2">
-                <h6 class="mb-0"><?= h($s['name']) ?></h6>
+                <h6 class="mb-0"><a href="staff_detail.php?id=<?= (int)$s['id'] ?>" class="text-decoration-none"><?= h($s['name']) ?></a></h6>
                 <span class="badge" style="<?= color_style($s['color_rank']) ?>"><?= h($s['color_rank']) ?></span>
               </div>
               <div class="small text-muted">
@@ -30,8 +30,10 @@ render_header('Color HRM 講師一覧', $user, 'index.php');
                 <?php if ($s['target_rank']): ?>
                   目標: <span class="badge" style="<?= color_style($s['target_rank']) ?>"><?= h($s['target_rank']) ?></span><br>
                 <?php endif; ?>
-                <?php if ($s['mentor']): ?>メンター: <?= h($s['mentor']) ?><?php endif; ?>
+                <?php if ($s['mentor']): ?>メンター: <?= h($s['mentor']) ?><br><?php endif; ?>
               </div>
+              <?php $gs = compute_goal_summary($s); ?>
+              <div class="mt-2"><?= goal_bar_html($gs, true) ?></div>
             </div>
           </div>
         </div>
