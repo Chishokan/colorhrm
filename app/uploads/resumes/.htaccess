@@ -1,0 +1,8 @@
+# 履歴書（個人情報）の直アクセスを全面禁止。閲覧は resume_view.php 経由のみ。
+Require all denied
+
+# 旧Apache(2.2)互換
+<IfModule !mod_authz_core.c>
+  Order allow,deny
+  Deny from all
+</IfModule>

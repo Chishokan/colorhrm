@@ -15,4 +15,9 @@ return [
   'db_user'    => 'あなたのDBユーザー名', // 例: chishokan_chrm
   'db_pass'    => 'あなたのDBパスワード',
   'db_charset' => 'utf8mb4',
+
+  // 履歴書OCR（フェーズ4-3）：Google Cloud Vision API キー。
+  // 空のままならOCRボタンは無効（履歴書のアップロード/閲覧は使えます）。
+  // 値を入れると候補者詳細から「OCRで読み取り」が有効になります。
+  'vision_api_key' => '',
 ];
