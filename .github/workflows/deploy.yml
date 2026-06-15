@@ -48,6 +48,7 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ftps          # Xサーバーは FTPS（明示的FTP over TLS）対応。失敗時は ftp に変更
           port: 21
+          timeout: 60000          # 制御ソケットのタイムアウト（既定30s→60s。一時的なTimeout対策）
           local-dir: ./app/       # app/ の中身だけを対象
           server-dir: ${{ vars.FTP_SERVER_DIR || '/chishokan.co.jp/public_html/colorhrm/' }}
           dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
