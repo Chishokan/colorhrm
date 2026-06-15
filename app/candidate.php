@@ -3,6 +3,7 @@ require __DIR__ . '/auth.php';
 require __DIR__ . '/helpers.php';
 require_login();
 require_role(['admin', 'staff']);
+require_recruitment_access();
 $user = current_user();
 
 $id    = (int)($_GET['id'] ?? 0);

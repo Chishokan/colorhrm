@@ -50,8 +50,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $role    = in_array($_POST['role'] ?? '', $roles, true) ? $_POST['role'] : 'teacher';
     $sid     = ($_POST['staff_id'] ?? '') !== '' ? (int)$_POST['staff_id'] : null;
     $active  = isset($_POST['is_active']) ? 1 : 0;
-    db()->prepare("UPDATE users SET role = ?, staff_id = ?, is_active = ? WHERE id = ?")
-        ->execute([$role, $sid, $active, $id]);
+    if (isset(users_columns()['view_recruitment'])) {
+      $vr = isset($_POST['view_recruitment']) ? 1 : 0;
+      $vs = isset($_POST['view_staff_list']) ? 1 : 0;
+      db()->prepare("UPDATE users SET role=?, staff_id=?, is_active=?, view_recruitment=?, view_staff_list=? WHERE id=?")
+          ->execute([$role, $sid, $active, $vr, $vs, $id]);
+    } else {
+      db()->prepare("UPDATE users SET role = ?, staff_id = ?, is_active = ? WHERE id = ?")
+          ->execute([$role, $sid, $active, $id]);
+    }
     $flash = 'ユーザー情報を更新しました。';
 
   } elseif ($action === 'reset_pw') {
@@ -162,6 +169,16 @@ render_header('ユーザー管理', $user, 'users.php');
                     <input class="form-check-input" type="checkbox" name="is_active" value="1" id="act<?= (int)$u['id'] ?>" <?= $u['is_active'] ? 'checked' : '' ?>>
                     <label class="form-check-label small" for="act<?= (int)$u['id'] ?>">有効</label>
                   </div>
+                  <?php if (isset(users_columns()['view_recruitment'])): ?>
+                  <div class="col-auto form-check ms-1" title="staffに採用閲覧を許可">
+                    <input class="form-check-input" type="checkbox" name="view_recruitment" id="vr<?= (int)$u['id'] ?>" <?= !empty($u['view_recruitment']) ? 'checked' : '' ?>>
+                    <label class="form-check-label small" for="vr<?= (int)$u['id'] ?>">採用</label>
+                  </div>
+                  <div class="col-auto form-check ms-1" title="teacherに講師一覧を許可">
+                    <input class="form-check-input" type="checkbox" name="view_staff_list" id="vs<?= (int)$u['id'] ?>" <?= !empty($u['view_staff_list']) ? 'checked' : '' ?>>
+                    <label class="form-check-label small" for="vs<?= (int)$u['id'] ?>">講師一覧</label>
+                  </div>
+                  <?php endif; ?>
                   <div class="col-auto">
                     <button class="btn btn-sm btn-outline-primary">保存</button>
                   </div>

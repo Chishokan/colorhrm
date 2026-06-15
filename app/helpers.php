@@ -75,6 +75,15 @@ function staff_has_column($name) {
   $c = staff_columns();
   return isset($c[$name]);
 }
+// users テーブルの実在カラム（権限フラグ列の有無判定など）
+function users_columns() {
+  static $c = null;
+  if ($c === null) {
+    $c = [];
+    foreach (db()->query("SHOW COLUMNS FROM users")->fetchAll() as $r) { $c[$r['Field']] = true; }
+  }
+  return $c;
+}
 
 // 育成達成率（GAS版 goalSummary 移植・サーバ側に集約）
 //   現カラーの次〜目標カラーに必要な研修項目（共通＋本人部門）のうち、合格/対象外の割合。
@@ -192,18 +201,58 @@ function csrf_check() {
 }
 
 // ------------------------------------------------------------
+// 細分化権限（GAS版 viewRecruitment / viewStaffList の移植）
+//   ※ 列(008)が無い場合は従来挙動にフォールバック：
+//     staff は採用閲覧可（既定true）、teacher は講師一覧不可（既定false）。
+// ------------------------------------------------------------
+function can_view_recruitment($user) {
+  $role = $user['role'] ?? '';
+  if ($role === 'admin') return true;
+  if ($role === 'staff') {
+    return array_key_exists('view_recruitment', $user) ? !empty($user['view_recruitment']) : true;
+  }
+  return false;
+}
+function can_view_staff_list($user) {
+  $role = $user['role'] ?? '';
+  if ($role === 'admin' || $role === 'staff') return true;
+  if ($role === 'teacher') {
+    return array_key_exists('view_staff_list', $user) ? !empty($user['view_staff_list']) : false;
+  }
+  return false;
+}
+function require_recruitment_access() {
+  if (!can_view_recruitment(current_user())) {
+    http_response_code(403);
+    echo '<!doctype html><meta charset="utf-8"><div style="font-family:sans-serif;padding:2rem">採用情報の閲覧権限がありません。 <a href="index.php">戻る</a></div>';
+    exit;
+  }
+}
+function require_staff_list_access() {
+  if (!can_view_staff_list(current_user())) {
+    http_response_code(403);
+    echo '<!doctype html><meta charset="utf-8"><div style="font-family:sans-serif;padding:2rem">講師一覧の閲覧権限がありません。 <a href="mypage.php">マイページへ</a></div>';
+    exit;
+  }
+}
+
+// ------------------------------------------------------------
 // 共通レイアウト（ヘッダ + ロール別ナビ / フッタ）
 // ------------------------------------------------------------
-function nav_links_for($role) {
+function nav_links_for($user) {
+  $role  = $user['role'] ?? '';
   $links = [];
   if ($role === 'teacher') {
     $links['mypage.php'] = 'マイページ';
+    if (can_view_staff_list($user)) { $links['index.php'] = '講師一覧'; }
   }
   if ($role === 'admin' || $role === 'staff') {
-    $links['dashboard.php']  = 'ダッシュボード';
-    $links['candidates.php'] = '採用';
-    $links['index.php']      = '講師一覧';
-    $links['training.php']   = '研修管理';
+    if (can_view_recruitment($user)) {
+      $links['dashboard.php']  = 'ダッシュボード';
+      $links['candidates.php'] = '採用';
+    }
+    $links['index.php']    = '講師一覧';
+    $links['training.php'] = '研修管理';
   }
   if ($role === 'admin') {
     $links['training_master.php'] = '研修マスター';
@@ -217,7 +266,7 @@ function nav_links_for($role) {
 
 function render_header($title, $user, $active = '') {
   $role  = $user['role'] ?? '';
-  $links = nav_links_for($role);
+  $links = nav_links_for($user);
   echo '<!doctype html><html lang="ja"><head><meta charset="utf-8">';
   echo '<meta name="viewport" content="width=device-width, initial-scale=1">';
   echo '<title>' . h($title) . '</title>';
