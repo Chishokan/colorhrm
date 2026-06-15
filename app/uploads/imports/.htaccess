@@ -1,0 +1,6 @@
+# 取り込み中CSV（個人情報を含む）の直アクセスを禁止。
+Require all denied
+<IfModule !mod_authz_core.c>
+  Order allow,deny
+  Deny from all
+</IfModule>
