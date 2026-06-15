@@ -68,7 +68,7 @@ render_header('研修管理', $user, 'training.php');
 
     <!-- ============ 承認インボックス（申告中の一覧） ============ -->
     <?php
-      $sql = "SELECT tp.id, tp.declared_at, tp.memo,
+      $sql = "SELECT tp.id, tp.declared_at, tp.memo, tp.evidence_file,
                      s.id AS staff_id, s.name AS staff_name,
                      ti.item_name, ti.department, ti.target_color, ti.is_required
               FROM training_progress tp
@@ -104,7 +104,12 @@ render_header('研修管理', $user, 'training.php');
                   <span class="badge" style="<?= color_style($p['target_color']) ?>"><?= h($p['target_color']) ?></span>
                 </td>
                 <td class="small text-muted"><?= h($p['declared_at']) ?></td>
-                <td class="small"><?= h($p['memo']) ?></td>
+                <td class="small">
+                  <?= h($p['memo']) ?>
+                  <?php if (!empty($p['evidence_file'])): ?>
+                    <a href="evidence_view.php?id=<?= (int)$p['id'] ?>" target="_blank" class="badge bg-secondary text-decoration-none">証跡</a>
+                  <?php endif; ?>
+                </td>
                 <td class="text-end">
                   <form method="post" class="d-inline-flex gap-1 justify-content-end">
                     <?= csrf_field() ?>
@@ -178,7 +183,7 @@ render_header('研修管理', $user, 'training.php');
           </thead>
           <tbody>
             <?php foreach ($rows as $it): ?>
-              <?php if (!($it['department'] === '' || in_array($it['department'], $myDepts, true))) continue; ?>
+              <?php if (!($it['department'] === '' || $it['department'] === '共通' || in_array($it['department'], $myDepts, true))) continue; ?>
               <?php $status = $it['status'] ?: '未着手'; ?>
               <tr>
                 <td class="small text-muted"><?= h($it['department'] ?: '共通') ?></td>

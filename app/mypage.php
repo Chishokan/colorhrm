@@ -9,6 +9,7 @@ $user = current_user();
 $staffId = $user['staff_id'] ?? null;
 
 $flash = '';
+$err   = '';
 $staff = null;
 
 if ($staffId) {
@@ -44,6 +45,33 @@ if ($staff && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') 
       (int)$staff['tenant_id'], (int)$staff['id'], $itemId, $memo, (int)$user['id'],
     ]);
     $flash = '申告しました。承認をお待ちください。';
+  }
+}
+
+// ------------------------------------------------------------
+// テスト証跡の提出（POST）：type=テスト の項目を証跡画像つきで「申告中」に
+// ------------------------------------------------------------
+if ($staff && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'submit_test') {
+  csrf_check();
+  $itemId = (int)($_POST['item_id'] ?? 0);
+  $chk = db()->prepare("SELECT id FROM training_items WHERE id = ? LIMIT 1");
+  $chk->execute([$itemId]);
+  if ($itemId && $chk->fetch()) {
+    try {
+      $saved = save_evidence_upload((int)$staff['id'], $itemId, $_FILES['evidence'] ?? []);
+      $sql = "INSERT INTO training_progress
+                (tenant_id, staff_id, training_item_id, status, evidence_file, submitted_by, declared_by, declared_at)
+              VALUES (?, ?, ?, '申告中', ?, ?, ?, NOW())
+              ON DUPLICATE KEY UPDATE
+                status='申告中', evidence_file=VALUES(evidence_file), submitted_by=VALUES(submitted_by),
+                declared_by=VALUES(declared_by), declared_at=NOW(), approved_by=NULL, approved_at=NULL";
+      db()->prepare($sql)->execute([
+        (int)$staff['tenant_id'], (int)$staff['id'], $itemId, $saved, $staff['name'], (int)$user['id'],
+      ]);
+      $flash = 'テスト証跡を提出しました。承認をお待ちください。';
+    } catch (Throwable $e) {
+      $err = $e->getMessage();
+    }
   }
 }
 
@@ -99,7 +127,7 @@ if ($staff && $targetColor) {
   // 部門でフィルタ（staff.departments はカンマ区切りの場合がある。department='' は全員対象）
   $myDepts = array_map('trim', explode(',', (string)$staff['departments']));
   foreach ($all as $row) {
-    if ($row['department'] === '' || in_array($row['department'], $myDepts, true)) {
+    if ($row['department'] === '' || $row['department'] === '共通' || in_array($row['department'], $myDepts, true)) {
       $items[] = $row;
     }
   }
@@ -111,6 +139,9 @@ render_header('マイページ', $user, 'mypage.php');
 
     <?php if ($flash): ?>
       <div class="alert alert-success py-2"><?= h($flash) ?></div>
+    <?php endif; ?>
+    <?php if ($err): ?>
+      <div class="alert alert-danger py-2"><?= h($err) ?></div>
     <?php endif; ?>
 
     <?php if (!$staff): ?>
@@ -180,6 +211,10 @@ render_header('マイページ', $user, 'mypage.php');
                   <td class="small text-muted"><?= h($it['department'] ?: '共通') ?></td>
                   <td>
                     <?= h($it['item_name']) ?>
+                    <?php if (!empty($it['module_key'])): ?>
+                      <a href="lessons_view.php?module=<?= rawurlencode($it['module_key']) ?>" target="_blank" class="badge bg-info text-dark text-decoration-none">📺 教材</a>
+                    <?php endif; ?>
+                    <?php if (($it['type'] ?? '') === 'テスト'): ?><span class="badge bg-light text-dark border">テスト</span><?php endif; ?>
                     <?php if (!empty($it['progress_memo'])): ?>
                       <div class="small text-muted">メモ: <?= h($it['progress_memo']) ?></div>
                     <?php endif; ?>
@@ -190,14 +225,23 @@ render_header('マイページ', $user, 'mypage.php');
                   <td><span class="badge <?= status_badge_class($status) ?>"><?= h($status) ?></span></td>
                   <td class="text-end">
                     <?php if (in_array($status, ['未着手', '差戻し', '不合格'], true)): ?>
-                      <form method="post" class="d-inline-flex gap-1">
-                        <?= csrf_field() ?>
-                        <input type="hidden" name="action" value="declare">
-                        <input type="hidden" name="item_id" value="<?= (int)$it['id'] ?>">
-                        <input type="text" name="memo" class="form-control form-control-sm" style="width:140px"
-                               placeholder="点数・実施日など">
-                        <button class="btn btn-sm btn-primary">申告</button>
-                      </form>
+                      <?php if (($it['type'] ?? '') === 'テスト'): ?>
+                        <form method="post" enctype="multipart/form-data" class="d-inline-flex gap-1">
+                          <?= csrf_field() ?>
+                          <input type="hidden" name="action" value="submit_test">
+                          <input type="hidden" name="item_id" value="<?= (int)$it['id'] ?>">
+                          <input type="file" name="evidence" accept="image/jpeg,image/png" class="form-control form-control-sm" style="width:170px" required>
+                          <button class="btn btn-sm btn-primary">証跡提出</button>
+                        </form>
+                      <?php else: ?>
+                        <form method="post" class="d-inline-flex gap-1">
+                          <?= csrf_field() ?>
+                          <input type="hidden" name="action" value="declare">
+                          <input type="hidden" name="item_id" value="<?= (int)$it['id'] ?>">
+                          <input type="text" name="memo" class="form-control form-control-sm" style="width:140px" placeholder="点数・実施日など">
+                          <button class="btn btn-sm btn-primary">申告</button>
+                        </form>
+                      <?php endif; ?>
                     <?php elseif ($status === '申告中'): ?>
                       <span class="text-muted small">承認待ち</span>
                     <?php else: ?>
