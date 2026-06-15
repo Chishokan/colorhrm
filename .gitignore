@@ -27,6 +27,9 @@ composer.lock
 app/uploads/resumes/*
 !app/uploads/resumes/.htaccess
 !app/uploads/resumes/.gitkeep
+app/uploads/imports/*
+!app/uploads/imports/.htaccess
+!app/uploads/imports/.gitkeep
 
 # OS / エディタ
 .DS_Store

@@ -133,6 +133,7 @@ function nav_links_for($role) {
   }
   if ($role === 'admin') {
     $links['training_master.php'] = '研修マスター';
+    $links['import.php']          = 'データ移行';
     $links['users.php']           = 'ユーザー管理';
   }
   return $links;
@@ -250,6 +251,83 @@ function vision_ocr_text($imagePath) {
     throw new RuntimeException('Vision API エラー: ' . ($data['error']['message'] ?? ('HTTP ' . $code)));
   }
   return $data['responses'][0]['fullTextAnnotation']['text'] ?? '';
+}
+
+// ------------------------------------------------------------
+// データ移行（フェーズ6）：CSV → candidates の列マッピング
+//   既存スプレッドシートの日本語見出し / GAS版camelCase / snake_case を吸収。
+// ------------------------------------------------------------
+function candidate_import_alias_map() {
+  return [
+    // no
+    'no' => 'no', 'NO' => 'no', '通し番号' => 'no', 'ナンバー' => 'no',
+    // name / age / note
+    'name' => 'name', '氏名' => 'name', '名前' => 'name', '応募者氏名' => 'name',
+    'age' => 'age', '年齢' => 'age',
+    'note' => 'note', '備考' => 'note',
+    // applied
+    'appliedMonth' => 'applied_month', '応募月' => 'applied_month',
+    'appliedDay' => 'applied_day', '応募日' => 'applied_day',
+    // assignment
+    'assignee' => 'assignee', '担当' => 'assignee', '担当者' => 'assignee',
+    'employmentType' => 'employment_type', '雇用形態' => 'employment_type',
+    'department' => 'department', '部署' => 'department', '部門' => 'department',
+    'school' => 'school', '校舎' => 'school',
+    'jobType' => 'job_type', '職種' => 'job_type',
+    'recruitingMedia' => 'recruiting_media', '求人媒体' => 'recruiting_media', '応募媒体' => 'recruiting_media',
+    'referrer' => 'referrer', '紹介者' => 'referrer',
+    // flags
+    'referralRewardPaid' => 'referral_reward_paid', '紹介謝礼配布済' => 'referral_reward_paid', '紹介謝礼' => 'referral_reward_paid',
+    'specialRecruiting' => 'special_recruiting', '企画求人' => 'special_recruiting',
+    'continuationRewardPaid' => 'continuation_reward_paid', '継続謝礼配布済' => 'continuation_reward_paid', '継続謝礼' => 'continuation_reward_paid',
+    'initialResponse' => 'initial_response', '初期対応済' => 'initial_response', '初期対応' => 'initial_response',
+    // selection / dates
+    'interviewDate' => 'interview_date', '面接日' => 'interview_date',
+    'selectionResult' => 'selection_result', '選考結果' => 'selection_result', '合否' => 'selection_result', '合否結果' => 'selection_result',
+    'hireDate' => 'hire_date', '入社日' => 'hire_date', '採用日' => 'hire_date',
+    'threeMonthCheckDate' => 'three_month_check_date', '3か月継続判断日' => 'three_month_check_date', '3か月判断日' => 'three_month_check_date',
+    'continued' => 'continued', '継続' => 'continued',
+  ];
+}
+
+// 取り込み可能な candidates 列（id/作成日時等は対象外）
+function candidate_import_columns() {
+  return [
+    'no', 'applied_month', 'applied_day', 'name', 'age', 'note', 'assignee',
+    'employment_type', 'department', 'school', 'job_type', 'recruiting_media', 'referrer',
+    'referral_reward_paid', 'special_recruiting', 'interview_date', 'selection_result',
+    'hire_date', 'three_month_check_date', 'continued', 'continuation_reward_paid', 'initial_response',
+  ];
+}
+
+// CSVセル値を列の型に合わせて正規化（NULL/真偽/日付/整数）
+function normalize_import_value($col, $val) {
+  $val = trim((string)$val);
+  $intCols  = ['no', 'applied_month', 'applied_day', 'age'];
+  $boolCols = ['referral_reward_paid', 'special_recruiting', 'continuation_reward_paid', 'initial_response'];
+  $dateCols = ['interview_date', 'hire_date', 'three_month_check_date'];
+
+  if (in_array($col, $boolCols, true)) {
+    return in_array(mb_strtolower($val), ['1', 'true', '○', '〇', 'yes', 'y', '済', 'はい'], true) ? 1 : 0;
+  }
+  if ($val === '') {
+    return in_array($col, array_merge($intCols, $dateCols), true) ? null : '';
+  }
+  if (in_array($col, $intCols, true)) {
+    return preg_match('/-?\d+/', $val, $m) ? (int)$m[0] : null;
+  }
+  if (in_array($col, $dateCols, true)) {
+    $s = str_replace(['/', '.'], '-', $val);
+    if (preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})/', $s, $m)) {
+      return sprintf('%04d-%02d-%02d', $m[1], $m[2], $m[3]);
+    }
+    return null; // 解釈できない日付は NULL
+  }
+  return $val;
+}
+
+function import_dir() {
+  return __DIR__ . '/uploads/imports';
 }
 
 // 履歴書テキストからフィールドを推定（GAS版 OcrService.parseResumeText 移植）
