@@ -3,6 +3,22 @@
 // 前提：auth.php を先に require しておくこと（session_start / current_user / h / db を使う）。
 
 // ------------------------------------------------------------
+// 設定（config.php）の読み込み（DB接続以外の値も参照したいため）
+// ------------------------------------------------------------
+function app_config() {
+  static $c = null;
+  if ($c === null) {
+    $c = require __DIR__ . '/config.php';
+  }
+  return $c;
+}
+
+function config_value($key, $default = '') {
+  $c = app_config();
+  return $c[$key] ?? $default;
+}
+
+// ------------------------------------------------------------
 // 研修ステータス
 // ------------------------------------------------------------
 function training_statuses() {
@@ -146,4 +162,141 @@ function render_header($title, $user, $active = '') {
 
 function render_footer() {
   echo '</body></html>';
+}
+
+// ------------------------------------------------------------
+// 履歴書アップロード（PII）
+//   保存先は app/uploads/resumes/。直アクセスは .htaccess で遮断し、
+//   閲覧は resume_view.php（要ログイン）経由のみ。
+// ------------------------------------------------------------
+function resume_dir() {
+  return __DIR__ . '/uploads/resumes';
+}
+
+function resume_allowed_ext() {
+  return ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png'];
+}
+
+// アップロードを保存し、保存ファイル名（candidates.resume_file に格納する値）を返す。
+// 失敗時は例外。
+function save_resume_upload($candidateId, $file) {
+  if (!isset($file['error']) || $file['error'] !== UPLOAD_ERR_OK) {
+    throw new RuntimeException('アップロードに失敗しました（コード: ' . ($file['error'] ?? '不明') . '）。');
+  }
+  if ($file['size'] > 8 * 1024 * 1024) {
+    throw new RuntimeException('ファイルが大きすぎます（上限8MB）。');
+  }
+  $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+  $allowed = resume_allowed_ext();
+  // 実際の中身からMIMEを判定（拡張子偽装対策）
+  $finfo = finfo_open(FILEINFO_MIME_TYPE);
+  $mime  = finfo_file($finfo, $file['tmp_name']);
+  finfo_close($finfo);
+  if (!isset($allowed[$ext]) || !in_array($mime, $allowed, true)) {
+    throw new RuntimeException('JPG / PNG 画像のみアップロードできます。');
+  }
+  $dir = resume_dir();
+  if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
+    throw new RuntimeException('保存先ディレクトリを作成できません。');
+  }
+  $name = 'cand' . (int)$candidateId . '_' . date('YmdHis') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+  $dest = $dir . '/' . $name;
+  if (!move_uploaded_file($file['tmp_name'], $dest)) {
+    // CLIテスト等で move_uploaded_file が使えない場合のフォールバック
+    if (!@rename($file['tmp_name'], $dest)) {
+      throw new RuntimeException('ファイルの保存に失敗しました。');
+    }
+  }
+  return $name;
+}
+
+// ------------------------------------------------------------
+// OCR：Google Cloud Vision（DOCUMENT_TEXT_DETECTION）でテキスト抽出
+//   config.php の 'vision_api_key' が空なら未設定として扱う。
+// ------------------------------------------------------------
+function ocr_enabled() {
+  return config_value('vision_api_key', '') !== '';
+}
+
+function vision_ocr_text($imagePath) {
+  $apiKey = config_value('vision_api_key', '');
+  if ($apiKey === '') {
+    throw new RuntimeException('OCRが未設定です（config.php に vision_api_key を設定してください）。');
+  }
+  $payload = json_encode([
+    'requests' => [[
+      'image'        => ['content' => base64_encode(file_get_contents($imagePath))],
+      'features'     => [['type' => 'DOCUMENT_TEXT_DETECTION']],
+      'imageContext' => ['languageHints' => ['ja']],
+    ]],
+  ]);
+  $ch = curl_init('https://vision.googleapis.com/v1/images:annotate?key=' . urlencode($apiKey));
+  curl_setopt_array($ch, [
+    CURLOPT_POST           => true,
+    CURLOPT_POSTFIELDS     => $payload,
+    CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_TIMEOUT        => 30,
+  ]);
+  $res  = curl_exec($ch);
+  $err  = curl_error($ch);
+  $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+  curl_close($ch);
+  if ($res === false) {
+    throw new RuntimeException('Vision API 接続エラー: ' . $err);
+  }
+  $data = json_decode($res, true);
+  if ($code !== 200) {
+    throw new RuntimeException('Vision API エラー: ' . ($data['error']['message'] ?? ('HTTP ' . $code)));
+  }
+  return $data['responses'][0]['fullTextAnnotation']['text'] ?? '';
+}
+
+// 履歴書テキストからフィールドを推定（GAS版 OcrService.parseResumeText 移植）
+function parse_resume_text($text) {
+  $result = [
+    'name' => '', 'birth_date' => '', 'phone' => '', 'email' => '',
+    'self_pr' => '', 'motivation' => '',
+  ];
+
+  if (preg_match('/0\d{1,4}[-\s]?\d{2,4}[-\s]?\d{4}/u', $text, $m)) {
+    $result['phone'] = preg_replace('/\s/u', '-', $m[0]);
+  }
+  if (preg_match('/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/u', $text, $m)) {
+    $result['email'] = $m[0];
+  }
+  if (preg_match('/(昭和|平成|令和)?\s*(\d+)\s*年\s*(\d+)\s*月\s*(\d+)\s*日/u', $text, $m)) {
+    $result['birth_date'] = trim($m[0]);
+  }
+
+  $lines = array_values(array_filter(
+    array_map('trim', preg_split('/\r\n|\r|\n/', $text)),
+    function ($l) { return $l !== ''; }
+  ));
+
+  foreach ($lines as $i => $l) {
+    if (preg_match('/ふりがな|フリガナ|氏\s*名/u', $l)) {
+      if (isset($lines[$i + 1])) {
+        $cand = $lines[$i + 1];
+        $len  = mb_strlen($cand, 'UTF-8');
+        if ($len >= 2 && $len <= 20) {
+          $result['name'] = $cand;
+        }
+      }
+      break;
+    }
+  }
+  foreach ($lines as $i => $l) {
+    if (preg_match('/志望動機/u', $l)) {
+      $result['motivation'] = implode(' ', array_slice($lines, $i + 1, 4));
+      break;
+    }
+  }
+  foreach ($lines as $i => $l) {
+    if (preg_match('/自己PR|自己紹介/u', $l)) {
+      $result['self_pr'] = implode(' ', array_slice($lines, $i + 1, 4));
+      break;
+    }
+  }
+  return $result;
 }

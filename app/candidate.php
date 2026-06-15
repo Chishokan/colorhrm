@@ -8,6 +8,7 @@ $user = current_user();
 $id    = (int)($_GET['id'] ?? 0);
 $flash = '';
 $err   = '';
+$ocrResult = null; // OCR読み取り結果（参考表示用）
 
 // 編集対象フィールド（フォーム→DB）
 $fields = [
@@ -91,6 +92,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       db()->prepare("UPDATE candidates SET converted_to_staff = 1 WHERE id = ?")->execute([$id]);
       $flash = "「{$c['name']}」を講師として登録しました（カラー: WHITE / 目標: GREEN）。";
     }
+  } elseif ($action === 'upload_resume') {
+    // 履歴書画像のアップロード（PII：認証付き保存）
+    if (!$id) {
+      $err = '先に応募者を保存してからアップロードしてください。';
+    } else {
+      try {
+        $saved = save_resume_upload($id, $_FILES['resume'] ?? []);
+        db()->prepare("UPDATE candidates SET resume_file = ?, ocr_extracted = 0 WHERE id = ?")
+            ->execute([$saved, $id]);
+        $flash = '履歴書をアップロードしました。';
+      } catch (Throwable $e) {
+        $err = $e->getMessage();
+      }
+    }
+  } elseif ($action === 'ocr') {
+    // 履歴書OCR → フィールド推定（Vision API。未設定なら案内）
+    $st = db()->prepare("SELECT resume_file FROM candidates WHERE id = ? LIMIT 1");
+    $st->execute([$id]);
+    $rf = (string)$st->fetchColumn();
+    if ($rf === '') {
+      $err = '先に履歴書をアップロードしてください。';
+    } elseif (!ocr_enabled()) {
+      $err = 'OCRが未設定です。config.php に vision_api_key を設定すると有効になります。';
+    } else {
+      try {
+        $text = vision_ocr_text(resume_dir() . '/' . basename($rf));
+        $ocrResult = parse_resume_text($text);
+        db()->prepare("UPDATE candidates SET ocr_extracted = 1 WHERE id = ?")->execute([$id]);
+        $flash = 'OCRで読み取りました。下の「OCR結果」を確認し、必要な項目をフォームに反映して保存してください。';
+      } catch (Throwable $e) {
+        $err = 'OCRに失敗しました: ' . $e->getMessage();
+      }
+    }
   }
 }
 
@@ -143,6 +177,53 @@ render_header($isNew ? '新規応募者' : '応募者: ' . ($c['name'] ?? ''), $
           <?php endif; ?>
         </div>
       </div>
+
+      <!-- 履歴書（PII：認証付き保存・閲覧） -->
+      <div class="card shadow-sm mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span>履歴書</span>
+          <?php if (!empty($c['resume_file'])): ?>
+            <span class="badge bg-success">登録済み<?= $c['ocr_extracted'] ? '・OCR済' : '' ?></span>
+          <?php endif; ?>
+        </div>
+        <div class="card-body">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <?php if (!empty($c['resume_file'])): ?>
+              <a href="resume_view.php?id=<?= (int)$c['id'] ?>" target="_blank" class="btn btn-sm btn-outline-primary">履歴書を開く</a>
+              <form method="post">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="ocr">
+                <button class="btn btn-sm btn-outline-secondary" <?= ocr_enabled() ? '' : 'disabled title="config.php に vision_api_key を設定すると有効"' ?>>OCRで読み取り</button>
+              </form>
+              <?php if (!ocr_enabled()): ?><span class="text-muted small">OCRは未設定（任意・後で有効化可）</span><?php endif; ?>
+            <?php else: ?>
+              <span class="text-muted small">履歴書は未登録です。</span>
+            <?php endif; ?>
+          </div>
+          <form method="post" enctype="multipart/form-data" class="row g-2 align-items-end mt-2">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="upload_resume">
+            <div class="col-auto">
+              <label class="form-label small mb-0">履歴書画像（JPG/PNG・8MBまで）</label>
+              <input type="file" name="resume" accept="image/jpeg,image/png" class="form-control form-control-sm" required>
+            </div>
+            <div class="col-auto">
+              <button class="btn btn-sm btn-primary"><?= !empty($c['resume_file']) ? '差し替え' : 'アップロード' ?></button>
+            </div>
+          </form>
+
+          <?php if ($ocrResult): ?>
+            <div class="alert alert-info mt-3 mb-0 py-2 small">
+              <div class="fw-bold mb-1">OCR結果（参考・自動入力は氏名のみ）</div>
+              <div>氏名: <?= h($ocrResult['name'] ?: '—') ?></div>
+              <div>生年月日: <?= h($ocrResult['birth_date'] ?: '—') ?></div>
+              <div>電話: <?= h($ocrResult['phone'] ?: '—') ?> / メール: <?= h($ocrResult['email'] ?: '—') ?></div>
+              <?php if ($ocrResult['motivation']): ?><div>志望動機: <?= h($ocrResult['motivation']) ?></div><?php endif; ?>
+              <?php if ($ocrResult['self_pr']): ?><div>自己PR: <?= h($ocrResult['self_pr']) ?></div><?php endif; ?>
+            </div>
+          <?php endif; ?>
+        </div>
+      </div>
     <?php endif; ?>
 
     <!-- 編集フォーム -->
@@ -153,7 +234,7 @@ render_header($isNew ? '新規応募者' : '応募者: ' . ($c['name'] ?? ''), $
         <div class="row g-3">
           <div class="col-md-6">
             <label class="form-label small mb-0">氏名 <span class="text-danger">*</span></label>
-            <input name="name" value="<?= h($val('name')) ?>" class="form-control form-control-sm" required>
+            <input name="name" value="<?= h($val('name') ?: ($ocrResult['name'] ?? '')) ?>" class="form-control form-control-sm" required>
           </div>
           <div class="col-md-2">
             <label class="form-label small mb-0">年齢</label>

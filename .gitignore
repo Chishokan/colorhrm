@@ -21,8 +21,12 @@ composer.lock
 # ローカル検証用スクリーンショット（リポジトリには載せない）
 /shots/
 
-# アップロード（OCR等で扱うファイル：フェーズ4以降）
+# アップロードされた履歴書（個人情報）は絶対にコミットしない。
+# ただし保存先ディレクトリ自体は配置したいので .htaccess / .gitkeep は追跡する。
 /uploads/
+app/uploads/resumes/*
+!app/uploads/resumes/.htaccess
+!app/uploads/resumes/.gitkeep
 
 # OS / エディタ
 .DS_Store
