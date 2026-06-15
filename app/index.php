@@ -20,10 +20,10 @@ render_header('Color HRM 講師一覧', $user, 'index.php');
     <div class="row g-3">
       <?php foreach ($rows as $s): ?>
         <div class="col-md-3 col-sm-6">
-          <div class="card h-100 shadow-sm">
+          <div class="card h-100 shadow-sm position-relative" style="cursor:pointer">
             <div class="card-body">
               <div class="d-flex justify-content-between align-items-start mb-2">
-                <h6 class="mb-0"><a href="staff_detail.php?id=<?= (int)$s['id'] ?>" class="text-decoration-none"><?= h($s['name']) ?></a></h6>
+                <h6 class="mb-0"><a href="staff_detail.php?id=<?= (int)$s['id'] ?>" class="text-decoration-none stretched-link"><?= h($s['name']) ?></a></h6>
                 <span class="badge" style="<?= color_style($s['color_rank']) ?>"><?= h($s['color_rank']) ?></span>
               </div>
               <div class="small text-muted">
