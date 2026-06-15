@@ -112,6 +112,15 @@ render_header('マイページ', $user, 'mypage.php');
         </div>
       </div>
 
+      <!-- 育成達成率 -->
+      <?php $gs = compute_goal_summary($staff); ?>
+      <div class="card shadow-sm mb-4">
+        <div class="card-body">
+          <div class="small text-muted mb-1">目標カラー <?= h($staff['target_rank'] ?: '—') ?> までの育成達成率</div>
+          <?= goal_bar_html($gs) ?>
+        </div>
+      </div>
+
       <!-- 研修進捗 -->
       <h5 class="mb-2">研修進捗
         <small class="text-muted">（育成目標カラー: <?= h($targetColor) ?>）</small>

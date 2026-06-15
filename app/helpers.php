@@ -55,6 +55,80 @@ function training_target_colors() {
   return ['GREEN', 'BLUE', 'YELLOW', 'RED'];
 }
 
+// カラー序列（昇格順）。GAS版 StaffService.COLOR_RANKS と一致。
+function color_ranks() {
+  return ['WHITE', 'GREEN', 'BLUE', 'YELLOW', 'RED'];
+}
+
+// staff テーブルの実在カラム集合（本番のスキーマ差異に強くするため動的取得・キャッシュ）
+function staff_columns() {
+  static $cols = null;
+  if ($cols === null) {
+    $cols = [];
+    foreach (db()->query("SHOW COLUMNS FROM staff")->fetchAll() as $r) {
+      $cols[$r['Field']] = true;
+    }
+  }
+  return $cols;
+}
+function staff_has_column($name) {
+  $c = staff_columns();
+  return isset($c[$name]);
+}
+
+// 育成達成率（GAS版 goalSummary 移植・サーバ側に集約）
+//   現カラーの次〜目標カラーに必要な研修項目（共通＋本人部門）のうち、合格/対象外の割合。
+function compute_goal_summary($staff) {
+  $ranks = color_ranks();
+  $cur = array_search($staff['color_rank'] ?? '', $ranks, true);
+  $tgt = array_search(($staff['target_rank'] ?? '') ?: '__none__', $ranks, true);
+  if ($cur === false || $tgt === false || $tgt <= $cur) {
+    return ['hasGoal' => false, 'label' => '継続', 'rate' => null, 'done' => 0, 'total' => 0];
+  }
+  $needColors = array_slice($ranks, $cur + 1, $tgt - $cur); // 次〜目標
+  $in = implode(',', array_fill(0, count($needColors), '?'));
+  $q = db()->prepare("SELECT id, department, target_color FROM training_items WHERE tenant_id = 1 AND target_color IN ($in)");
+  $q->execute($needColors);
+  $items = $q->fetchAll();
+
+  $myDepts = array_map('trim', explode(',', (string)($staff['departments'] ?? '')));
+  $req = array_values(array_filter($items, function ($it) use ($myDepts) {
+    return $it['department'] === '' || $it['department'] === '共通' || in_array($it['department'], $myDepts, true);
+  }));
+  $total = count($req);
+  if ($total === 0) {
+    return ['hasGoal' => true, 'label' => '対象項目なし', 'rate' => 100, 'done' => 0, 'total' => 0];
+  }
+  $ids = array_column($req, 'id');
+  $in2 = implode(',', array_fill(0, count($ids), '?'));
+  $ps = db()->prepare("SELECT training_item_id, status FROM training_progress WHERE staff_id = ? AND training_item_id IN ($in2)");
+  $ps->execute(array_merge([(int)$staff['id']], $ids));
+  $statusBy = [];
+  foreach ($ps->fetchAll() as $r) { $statusBy[$r['training_item_id']] = $r['status']; }
+  $done = 0;
+  foreach ($req as $it) {
+    $s = $statusBy[$it['id']] ?? '未着手';
+    if ($s === '合格' || $s === '対象外') { $done++; }
+  }
+  $rate = (int)round($done / $total * 100);
+  return ['hasGoal' => true, 'label' => "{$done}/{$total}", 'rate' => $rate, 'done' => $done, 'total' => $total];
+}
+
+// 達成率バーのHTML
+function goal_bar_html($gs, $compact = false) {
+  if (!$gs['hasGoal']) {
+    return '<span class="text-muted small">' . h($gs['label']) . '</span>';
+  }
+  $rate = (int)$gs['rate'];
+  $cls = $rate >= 100 ? 'bg-success' : ($rate >= 50 ? 'bg-info' : 'bg-warning');
+  $h = '<div class="progress" style="height:' . ($compact ? '8px' : '16px') . '">'
+     . '<div class="progress-bar ' . $cls . '" style="width:' . $rate . '%"></div></div>';
+  if (!$compact) {
+    $h .= '<div class="small text-muted">達成率 ' . $rate . '%（' . h($gs['label']) . '）</div>';
+  }
+  return $h;
+}
+
 // ------------------------------------------------------------
 // 採用（candidates）の選択肢
 // ------------------------------------------------------------
