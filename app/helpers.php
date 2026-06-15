@@ -207,6 +207,7 @@ function nav_links_for($role) {
   }
   if ($role === 'admin') {
     $links['training_master.php'] = '研修マスター';
+    $links['questions.php']       = '質問';
     $links['import.php']          = 'データ移行';
     $links['users.php']           = 'ユーザー管理';
   }

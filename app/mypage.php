@@ -48,6 +48,39 @@ if ($staff && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') 
 }
 
 // ------------------------------------------------------------
+// 質問への回答（POST）
+// ------------------------------------------------------------
+if ($staff && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'answer') {
+  csrf_check();
+  $qid = (int)($_POST['question_id'] ?? 0);
+  $ans = trim($_POST['answer'] ?? '');
+  // 対象の質問が本人に表示可能か確認（有効 かつ 全員向け or 本人指定）
+  $chk = db()->prepare("SELECT id FROM questions WHERE id = ? AND is_active = 1 AND (target_staff_id IS NULL OR target_staff_id = 0 OR target_staff_id = ?) LIMIT 1");
+  $chk->execute([$qid, (int)$staff['id']]);
+  if ($qid && $chk->fetch()) {
+    db()->prepare("INSERT INTO answers (tenant_id, question_id, staff_id, answer) VALUES (1, ?, ?, ?)
+                   ON DUPLICATE KEY UPDATE answer = VALUES(answer), answered_at = NOW()")
+        ->execute([$qid, (int)$staff['id'], $ans]);
+    $flash = '回答を保存しました。';
+  }
+}
+
+// 本人に表示する質問＋自分の回答（テーブル未作成でも落ちないようガード）
+$questions = [];
+if ($staff) {
+  try {
+    $qq = db()->prepare(
+      "SELECT q.id, q.text, a.answer
+         FROM questions q
+         LEFT JOIN answers a ON a.question_id = q.id AND a.staff_id = ?
+        WHERE q.is_active = 1 AND (q.target_staff_id IS NULL OR q.target_staff_id = 0 OR q.target_staff_id = ?)
+        ORDER BY q.sort_order, q.id");
+    $qq->execute([(int)$staff['id'], (int)$staff['id']]);
+    $questions = $qq->fetchAll();
+  } catch (Throwable $e) { $questions = []; }
+}
+
+// ------------------------------------------------------------
 // 研修項目 + 自分の進捗を取得（部門 × 育成目標カラー）
 // ------------------------------------------------------------
 $items = [];
@@ -175,6 +208,27 @@ render_header('マイページ', $user, 'mypage.php');
               <?php endforeach; ?>
             </tbody>
           </table>
+        </div>
+      <?php endif; ?>
+
+      <!-- 管理者からの質問 -->
+      <?php if ($questions): ?>
+        <h5 class="mb-2 mt-4">管理者からの質問</h5>
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <?php foreach ($questions as $q): ?>
+              <form method="post" class="mb-3">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="answer">
+                <input type="hidden" name="question_id" value="<?= (int)$q['id'] ?>">
+                <label class="form-label small mb-1 fw-bold"><?= h($q['text']) ?></label>
+                <div class="input-group input-group-sm">
+                  <textarea name="answer" class="form-control" rows="2"><?= h($q['answer'] ?? '') ?></textarea>
+                  <button class="btn btn-outline-primary">保存</button>
+                </div>
+              </form>
+            <?php endforeach; ?>
+          </div>
         </div>
       <?php endif; ?>
 
