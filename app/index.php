@@ -2,6 +2,7 @@
 require __DIR__ . '/auth.php';
 require __DIR__ . '/helpers.php';
 require_login();
+require_staff_list_access();
 $user = current_user();
 
 $t0 = microtime(true);
