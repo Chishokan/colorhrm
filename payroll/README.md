@@ -16,6 +16,7 @@ URL は `https://chishokan.co.jp/colorhrm-pay/`。
 | `index.php` | ダッシュボード（admin/staff）。講師別の時給一覧＋各機能入口 |
 | `shifts.php` | シフト申請（teacher）。自分のシフト可能を月ごとに申請/取消・確定状況確認 |
 | `shifts_admin.php` | シフト管理（admin/staff）。申請の確定（授業分入力）/却下・確定シフトの追加/編集/削除 |
+| `payroll.php` | 給与計算・振込一覧（admin/staff）。確定シフト×時給表で月次集計＋CSV/コピー |
 | `rates.php` | 時給表（WageRates）管理（admin）。カラー×部門の授業時給/運営時給 |
 | `login.php` / `logout.php` | ログイン / ログアウト |
 | `config.php.example` | DB接続テンプレート |
@@ -27,7 +28,9 @@ URL は `https://chishokan.co.jp/colorhrm-pay/`。
 - **D-2（実装済）**：シフト申請→承認→確定（`shift_applications` / `shift_days`）。
   - DB：`migrations/010_phaseD2.sql`（`shift_applications` / `shift_days`）。
   - 稼働分＝開始〜終了の差。授業分は確定時に管理者が入力、運営分＝稼働分−授業分。
-- **D-3（予定）**：給与計算＋振込一覧（時給×分 ＋ 交通費）。
+- **D-3（実装済）**：給与計算＋振込一覧。`payroll.php`。
+  - 授業給与=round(授業分/60×授業時給)、運営給与=round(運営分/60×運営時給)。
+  - 交通費＝勤務日数 ≤5:日数×200／超過:ceil(日数/5)×1000。CSV/コピー出力。
 
 ## デプロイ
 

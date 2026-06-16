@@ -91,6 +91,7 @@ function nav_links_for($user) {
   if ($role === 'admin' || $role === 'staff') {
     $links['index.php']        = 'ダッシュボード';
     $links['shifts_admin.php'] = 'シフト管理';
+    $links['payroll.php']      = '給与計算';
   }
   if ($role === 'admin') {
     $links['rates.php'] = '時給表';
@@ -144,4 +145,67 @@ function hm($t) { return substr((string)$t, 0, 5); }
 // 月文字列（YYYY-MM）を検証し、不正なら当月を返す
 function valid_month($m) {
   return preg_match('/^\d{4}-\d{2}$/', (string)$m) ? $m : date('Y-m');
+}
+
+// 交通費（GAS版準拠）：勤務日数 ≤5 は 日数×200、超過は ceil(日数/5)×1000。
+function transport_allowance($days) {
+  $days = max(0, (int)$days);
+  if ($days === 0) return 0;
+  if ($days <= 5) return $days * 200;
+  return (int) (ceil($days / 5) * 1000);
+}
+
+// 月次の給与計算。shift_days × pay_rates から講師ごとに集計して配列で返す。
+//   返り値: [ ['staff'=>..., 'days'=>, 'class_min'=>, 'ops_min'=>,
+//             'class_rate'=>, 'ops_rate'=>, 'class_pay'=>, 'ops_pay'=>,
+//             'transport'=>, 'total'=>], ... ]（講師名順）
+function compute_month_payroll($month) {
+  // use_payroll 列の有無
+  $hasUsePayroll = false;
+  foreach (db()->query("SHOW COLUMNS FROM staff")->fetchAll() as $c) {
+    if ($c['Field'] === 'use_payroll') { $hasUsePayroll = true; }
+  }
+  $sql = "SELECT s.id, s.name, s.color_rank, s.departments"
+       . ($hasUsePayroll ? ", s.use_payroll" : "")
+       . " , sd.work_date, sd.start_time, sd.end_time, sd.class_minutes"
+       . " FROM shift_days sd JOIN staff s ON s.id = sd.staff_id"
+       . " WHERE DATE_FORMAT(sd.work_date,'%Y-%m') = ?"
+       . " ORDER BY s.name, sd.work_date";
+  $q = db()->prepare($sql);
+  $q->execute([$month]);
+
+  $agg = [];
+  foreach ($q->fetchAll() as $r) {
+    $sid = (int)$r['id'];
+    if (!isset($agg[$sid])) {
+      $agg[$sid] = [
+        'staff' => ['id' => $sid, 'name' => $r['name'], 'color_rank' => $r['color_rank'],
+                    'departments' => $r['departments'],
+                    'use_payroll' => $hasUsePayroll ? $r['use_payroll'] : 1],
+        'days_set' => [], 'class_min' => 0, 'ops_min' => 0,
+      ];
+    }
+    $worked = shift_minutes($r['start_time'], $r['end_time']);
+    $cls = min((int)$r['class_minutes'], $worked);
+    $agg[$sid]['class_min'] += $cls;
+    $agg[$sid]['ops_min']   += ($worked - $cls);
+    $agg[$sid]['days_set'][$r['work_date']] = true;
+  }
+
+  $out = [];
+  foreach ($agg as $a) {
+    $rate = compute_class_rate($a['staff']);
+    $classPay = (int) round($a['class_min'] / 60 * $rate['class_rate']);
+    $opsPay   = (int) round($a['ops_min']   / 60 * $rate['ops_rate']);
+    $days     = count($a['days_set']);
+    $transport = transport_allowance($days);
+    $out[] = [
+      'staff' => $a['staff'], 'days' => $days,
+      'class_min' => $a['class_min'], 'ops_min' => $a['ops_min'],
+      'class_rate' => $rate['class_rate'], 'ops_rate' => $rate['ops_rate'],
+      'class_pay' => $classPay, 'ops_pay' => $opsPay,
+      'transport' => $transport, 'total' => $classPay + $opsPay + $transport,
+    ];
+  }
+  return $out;
 }

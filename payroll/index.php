@@ -79,6 +79,6 @@ render_header('給与・シフト', $user, 'index.php');
       </div>
     </div>
 
-    <p class="text-muted small mt-3"><a href="shifts_admin.php">シフト管理</a>で申請の確定・編集ができます。給与計算＋振込一覧（D-3）は順次追加します。</p>
+    <p class="text-muted small mt-3"><a href="shifts_admin.php">シフト管理</a>で申請の確定・編集、<a href="payroll.php">給与計算</a>で月次の給与・振込一覧を確認できます。</p>
   </div>
 <?php render_footer(); ?>
