@@ -139,6 +139,27 @@ render_header('講師: ' . $s['name'], $user, 'index.php');
       </div>
     </div>
 
+    <!-- 給与（時給：カラー×部門） -->
+    <?php $rate = compute_class_rate($s); ?>
+    <div class="card shadow-sm mb-3">
+      <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <div class="small">
+          授業時給 <span class="fw-bold">¥<?= number_format($rate['class_rate']) ?></span>
+          <span class="text-muted ms-2">運営時給 ¥<?= number_format($rate['ops_rate']) ?></span>
+          <span class="text-muted ms-2">（<?= h($s['color_rank']) ?> × <?= h($s['departments'] ?: '—') ?>）</span>
+          <?php if (isset($cols['use_payroll'])): ?>
+            <span class="badge <?= !empty($s['use_payroll']) ? 'bg-success' : 'bg-secondary' ?> ms-2"><?= !empty($s['use_payroll']) ? '給与対象' : '給与対象外' ?></span>
+          <?php endif; ?>
+        </div>
+        <div>
+          <a href="pay_rates.php" class="btn btn-sm btn-outline-secondary">時給表</a>
+          <?php if (config_value('payroll_url', '') !== ''): ?>
+            <a href="<?= h(config_value('payroll_url')) ?>" target="_blank" rel="noopener" class="btn btn-sm btn-outline-success">給与システム ↗</a>
+          <?php endif; ?>
+        </div>
+      </div>
+    </div>
+
     <!-- プロフィール編集 -->
     <form method="post" class="card shadow-sm mb-3">
       <?= csrf_field() ?>
