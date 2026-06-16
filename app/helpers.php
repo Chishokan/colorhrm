@@ -18,6 +18,11 @@ function config_value($key, $default = '') {
   return $c[$key] ?? $default;
 }
 
+// ログイン後/トップの遷移先（teacher はマイページ、admin/staff は講師一覧）
+function home_url_for($user) {
+  return (($user['role'] ?? '') === 'teacher') ? 'mypage.php' : 'index.php';
+}
+
 // ------------------------------------------------------------
 // アカウント発行メール（PHP mail() / mb_send_mail）
 //   送信タイミング：ユーザー個別作成・講師一括作成・PW再発行。

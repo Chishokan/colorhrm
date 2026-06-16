@@ -1,11 +1,13 @@
 <?php
 require __DIR__ . '/auth.php';
-if (current_user()) { header('Location: index.php'); exit; }
+require __DIR__ . '/helpers.php';
+if (current_user()) { header('Location: ' . home_url_for(current_user())); exit; }
 
 $err = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if (login_attempt($_POST['email'] ?? '', $_POST['password'] ?? '')) {
-    header('Location: index.php');
+    // teacher はマイページ、admin/staff は講師一覧へ
+    header('Location: ' . home_url_for(current_user()));
     exit;
   }
   $err = 'メールアドレスまたはパスワードが違います';
@@ -24,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="card shadow-sm">
       <div class="card-body p-4">
         <h4 class="mb-1">🎓 Color HRM</h4>
-        <p class="text-muted small mb-3">智翔館グループ 個別指導部門</p>
+        <p class="text-muted small mb-3">智翔館グループ 講師キャリアパスシステム</p>
         <?php if ($err): ?>
           <div class="alert alert-danger py-2"><?= h($err) ?></div>
         <?php endif; ?>

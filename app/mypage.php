@@ -171,6 +171,9 @@ render_header('マイページ', $user, 'mypage.php');
                   <span class="badge" style="<?= color_style($staff['target_rank']) ?>"><?= h($staff['target_rank']) ?></span>
                 </div>
               <?php endif; ?>
+              <?php if (!empty($staff['target_date'])): ?>
+                <div class="small text-muted">達成期日: <?= h($staff['target_date']) ?></div>
+              <?php endif; ?>
             </div>
           </div>
         </div>
@@ -180,7 +183,7 @@ render_header('マイページ', $user, 'mypage.php');
       <?php $gs = compute_goal_summary($staff); ?>
       <div class="card shadow-sm mb-4">
         <div class="card-body">
-          <div class="small text-muted mb-1">目標カラー <?= h($staff['target_rank'] ?: '—') ?> までの育成達成率</div>
+          <div class="small text-muted mb-1">目標カラー <?= h($staff['target_rank'] ?: '—') ?> までの育成達成率<?php if (!empty($staff['target_date'])): ?> <span class="ms-1">（達成期日: <?= h($staff['target_date']) ?>）</span><?php endif; ?></div>
           <?= goal_bar_html($gs) ?>
         </div>
       </div>
