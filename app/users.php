@@ -41,7 +41,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $sql  = "INSERT INTO users (email, password_hash, role, staff_id, display_name, is_active)
                  VALUES (?, ?, ?, ?, ?, 1)";
         db()->prepare($sql)->execute([$email, $hash, $role, $sid, $display]);
-        $flash = "ユーザー「{$email}」を作成しました。";
+        $sent  = send_account_email($email, $display, $email, $pw, false);
+        $flash = "ユーザー「{$email}」を作成しました。"
+               . ($sent ? 'ログイン情報をメール送信しました。' : 'メールは送信していません（メール設定をご確認ください）。');
       }
     }
 
@@ -69,7 +71,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
       db()->prepare("UPDATE users SET password_hash = ? WHERE id = ?")
           ->execute([password_hash($pw, PASSWORD_DEFAULT), $id]);
-      $flash = 'パスワードを変更しました。';
+      $row = db()->prepare("SELECT email, display_name FROM users WHERE id = ?");
+      $row->execute([$id]);
+      $tgt  = $row->fetch();
+      $sent = $tgt ? send_account_email($tgt['email'], $tgt['display_name'], $tgt['email'], $pw, true) : false;
+      $flash = 'パスワードを変更しました。' . ($sent ? '新しいパスワードをメール送信しました。' : '');
     }
   }
 }

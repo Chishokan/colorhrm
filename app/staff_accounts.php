@@ -53,8 +53,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
         $created[] = ['name' => $s['name'], 'email' => $email, 'password' => $pw];
       }
       db()->commit();
+      $mailed = 0;
+      foreach ($created as $c) {
+        if (send_account_email($c['email'], $c['name'], $c['email'], $c['password'], false)) { $mailed++; }
+      }
       $flash = count($created) . '件のアカウントを作成しました'
-             . ($skipped ? '（スキップ ' . count($skipped) . '件）' : '') . '。';
+             . ($skipped ? '（スキップ ' . count($skipped) . '件）' : '') . '。'
+             . ($mailed ? " {$mailed}件にログイン情報をメール送信しました。" : '');
     } catch (Throwable $e) {
       db()->rollBack();
       $created = [];

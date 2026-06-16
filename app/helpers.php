@@ -19,6 +19,62 @@ function config_value($key, $default = '') {
 }
 
 // ------------------------------------------------------------
+// アカウント発行メール（PHP mail() / mb_send_mail）
+//   送信タイミング：ユーザー個別作成・講師一括作成・PW再発行。
+// ------------------------------------------------------------
+// ログインURLの基点（config の app_base_url、無ければ実行URLから生成）
+function app_base_url() {
+  $u = config_value('app_base_url', '');
+  if ($u !== '') return rtrim($u, '/') . '/';
+  $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+  $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
+  $dir    = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
+  return $scheme . '://' . $host . $dir . '/';
+}
+
+// 件名・本文を組み立てる（テスト可能なよう送信から分離）
+function compose_account_email($toName, $loginEmail, $password = null, $isReset = false) {
+  $loginUrl = app_base_url() . 'login.php';
+  $subject  = $isReset ? '【Color HRM】パスワードが再発行されました'
+                       : '【Color HRM】アカウントが発行されました';
+  $lead = $isReset
+    ? "Color HRM のパスワードが再発行されました。\n新しいパスワードでログインしてください。"
+    : "Color HRM のアカウントが発行されました。\n下記からログインしてください。";
+  $body  = ($toName !== '' ? "{$toName} 様\n\n" : '') . $lead . "\n\n";
+  $body .= "ログインURL: {$loginUrl}\n";
+  $body .= "ログインID（メール）: {$loginEmail}\n";
+  if ($password !== null && $password !== '') {
+    $body .= "パスワード: {$password}\n";
+  }
+  $body .= "\n※ ログイン後、ユーザー管理よりパスワードの変更をお願いします。\n";
+  $body .= "※ このメールは送信専用です。ご不明点は管理者へお問い合わせください。\n\n";
+  $body .= "智翔館グループ Color HRM";
+  return [$subject, $body];
+}
+
+// アカウント発行/再発行メールを送信。成功で true。
+function send_account_email($toEmail, $toName, $loginEmail, $password = null, $isReset = false) {
+  $toEmail = trim((string)$toEmail);
+  if (!config_value('mail_enabled', true) || $toEmail === '') return false;
+  $from = trim((string)config_value('mail_from', ''));
+  if ($from === '') return false;
+  $fromName = config_value('mail_from_name', 'Color HRM');
+
+  [$subject, $body] = compose_account_email((string)$toName, (string)$loginEmail, $password, $isReset);
+
+  $prevLang = mb_language();
+  $prevEnc  = mb_internal_encoding();
+  mb_language('uni');               // UTF-8 で MIME エンコード（Gmail 等で文字化けしない）
+  mb_internal_encoding('UTF-8');
+  $headers  = 'From: ' . mb_encode_mimeheader($fromName) . " <{$from}>\r\n";
+  $headers .= "Reply-To: {$from}\r\n";
+  $ok = @mb_send_mail($toEmail, $subject, $body, $headers, '-f' . $from); // -f で封筒差出人
+  mb_language($prevLang);
+  mb_internal_encoding($prevEnc);
+  return (bool)$ok;
+}
+
+// ------------------------------------------------------------
 // 研修ステータス
 // ------------------------------------------------------------
 function training_statuses() {
