@@ -152,10 +152,8 @@ render_header('講師: ' . $s['name'], $user, 'index.php');
           <?php endif; ?>
         </div>
         <div>
-          <a href="pay_rates.php" class="btn btn-sm btn-outline-secondary">時給表</a>
-          <?php if (config_value('payroll_url', '') !== ''): ?>
-            <a href="<?= h(config_value('payroll_url')) ?>" target="_blank" rel="noopener" class="btn btn-sm btn-outline-success">給与システム ↗</a>
-          <?php endif; ?>
+          <a href="<?= h(rtrim(config_value('payroll_url', '/colorhrm-pay/'), '/')) ?>/rates.php" class="btn btn-sm btn-outline-secondary">時給表</a>
+          <a href="<?= h(config_value('payroll_url', '/colorhrm-pay/')) ?>" class="btn btn-sm btn-outline-success">給与・シフト →</a>
         </div>
       </div>
     </div>

@@ -274,7 +274,6 @@ function nav_links_for($user) {
     $links['training_master.php'] = '研修マスター';
     $links['lessons.php']         = '研修動画';
     $links['questions.php']       = '質問';
-    $links['pay_rates.php']       = '給与レート';
     $links['import.php']          = 'データ移行';
     $links['users.php']           = 'ユーザー管理';
   }

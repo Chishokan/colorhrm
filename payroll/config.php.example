@@ -1,0 +1,19 @@
+<?php
+// ============================================================
+// 給与・シフトアプリ（/colorhrm-pay/）DB接続設定（テンプレート）
+//   このファイルを config.php にコピーし、ColorHRM と「同じ」MySQLの値を入れる。
+//     cp config.php.example config.php
+//   ※ ColorHRM と同一DBを共有する（staff / users / pay_rates を直接参照）。
+//   ※ config.php は .gitignore 済み（Gitには上げない）。
+// ============================================================
+return [
+  // ColorHRM の config.php と同じ値を入れる（同一DBを共有するため）。
+  'db_host'    => 'mysqlXXXX.xserver.jp', // 例: mysql8055.xserver.jp（localhost 不可）
+  'db_name'    => 'あなたのDB名',        // ColorHRM と同じDB
+  'db_user'    => 'あなたのDBユーザー名',
+  'db_pass'    => 'あなたのDBパスワード',
+  'db_charset' => 'utf8mb4',
+
+  // ColorHRM（採用・育成）アプリへ戻るリンク先。
+  'colorhrm_url' => '/colorhrm/',
+];

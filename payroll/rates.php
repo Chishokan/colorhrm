@@ -1,7 +1,8 @@
 <?php
-// 給与レート（時給表）管理（admin）。カラー×部門の授業時給/運営時給。
+// 時給表（WageRates）管理（admin）。カラー×部門の授業時給/運営時給。
+// ColorHRM と共有する pay_rates テーブルを編集する（編集はこの給与アプリに一本化）。
 require __DIR__ . '/auth.php';
-require __DIR__ . '/helpers.php';
+require __DIR__ . '/lib.php';
 require_login();
 require_role('admin');
 $user = current_user();
@@ -13,8 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check();
   $action = $_POST['action'] ?? '';
   if ($action === 'save') {
-    // まとめて更新（id => class_rate / ops_rate）
-    $cr = $_POST['class_rate'] ?? [];
+    $cr  = $_POST['class_rate'] ?? [];
     $opr = $_POST['ops_rate'] ?? [];
     $stmt = db()->prepare("UPDATE pay_rates SET class_rate=?, ops_rate=? WHERE id=?");
     foreach ($cr as $id => $v) {
@@ -40,21 +40,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $rows = db()->query("SELECT * FROM pay_rates WHERE tenant_id=1 ORDER BY department, FIELD(color,'WHITE','GREEN','BLUE','YELLOW','RED')")->fetchAll();
-$byDept = [];
-foreach ($rows as $r) { $byDept[$r['department']][$r['color']] = $r; }
 
-render_header('給与レート（時給表）', $user, 'pay_rates.php');
+render_header('時給表（WageRates）', $user, 'rates.php');
 ?>
   <div class="container py-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <h4 class="mb-0">給与レート（時給表）</h4>
-      <?php if (config_value('payroll_url', '') !== ''): ?>
-        <a href="<?= h(config_value('payroll_url')) ?>" target="_blank" rel="noopener" class="btn btn-sm btn-outline-success">給与システムを開く ↗</a>
-      <?php endif; ?>
-    </div>
+    <h4 class="mb-3">時給表（WageRates）</h4>
     <?php if ($flash): ?><div class="alert alert-success py-2"><?= h($flash) ?></div><?php endif; ?>
     <?php if ($err): ?><div class="alert alert-danger py-2"><?= h($err) ?></div><?php endif; ?>
-    <p class="text-muted small">授業・面談はカラー×部門の授業時給、その他業務は運営時給で計算します（GAS版 WageRates 準拠）。</p>
+    <p class="text-muted small">授業・面談はカラー×部門の<strong>授業時給</strong>、その他業務は<strong>運営時給</strong>で計算します（GAS版 WageRates 準拠）。複数部門に所属する講師は最も高い授業時給が適用されます。</p>
 
     <form method="post">
       <?= csrf_field() ?>
@@ -78,7 +71,7 @@ render_header('給与レート（時給表）', $user, 'pay_rates.php');
             </tbody>
           </table>
         </div>
-        <div class="card-footer text-end"><button class="btn btn-primary">時給表を保存</button></div>
+        <div class="card-footer text-end"><button class="btn btn-success">時給表を保存</button></div>
       </div>
     </form>
 
@@ -97,7 +90,7 @@ render_header('給与レート（時給表）', $user, 'pay_rates.php');
           <div class="col-auto"><label class="form-label small mb-0">部門</label><input name="department" class="form-control form-control-sm"></div>
           <div class="col-auto"><label class="form-label small mb-0">授業時給</label><input name="new_class_rate" type="number" value="1031" class="form-control form-control-sm"></div>
           <div class="col-auto"><label class="form-label small mb-0">運営時給</label><input name="new_ops_rate" type="number" value="1031" class="form-control form-control-sm"></div>
-          <div class="col-auto"><button class="btn btn-sm btn-outline-primary">追加</button></div>
+          <div class="col-auto"><button class="btn btn-sm btn-outline-success">追加</button></div>
         </form>
       </div>
     </div>
