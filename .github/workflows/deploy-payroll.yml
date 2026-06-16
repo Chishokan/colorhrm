@@ -1,0 +1,57 @@
+name: Deploy Payroll to Xserver
+
+# payroll/ 配下のPHPを Xサーバーの /colorhrm-pay/ へ FTPS デプロイする。
+# ColorHRM(app/) とは別アプリ・別URL・別FTPアカウントで配置する。
+#
+# ★DBマイグレーション（migrations/*.sql）は対象外。phpMyAdmin で手動実行してから流すこと。
+#
+# 必要な GitHub Secrets:
+#   FTP_PAY_SERVER    … FTPホスト名（例: sv8550.xserver.jp）
+#   FTP_PAY_USERNAME  … 給与アプリ用FTPユーザー名（ホーム＝colorhrm-pay ディレクトリ）
+#   FTP_PAY_PASSWORD  … FTPパスワード
+# 任意の Variables:
+#   FTP_PAY_SERVER_DIR … 配置先（既定: /。専用アカウントのホームが colorhrm-pay の想定）。
+#                        末尾スラッシュ必須。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'payroll/**'
+      - '.github/workflows/deploy-payroll.yml'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run（アップロードせず差分の一覧だけ表示）'
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-xserver-payroll
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: FTPS Deploy (payroll/ -> colorhrm-pay/)
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_PAY_SERVER }}
+          username: ${{ secrets.FTP_PAY_USERNAME }}
+          password: ${{ secrets.FTP_PAY_PASSWORD }}
+          protocol: ftps
+          port: 21
+          timeout: 60000
+          local-dir: ./payroll/
+          server-dir: ${{ vars.FTP_PAY_SERVER_DIR || '/' }}
+          dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          exclude: |
+            **/config.php
+            **/config.php.example
+            **/README.md
+            **/.git*
+            **/.DS_Store

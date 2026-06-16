@@ -55,6 +55,22 @@ function training_target_colors() {
   return ['GREEN', 'BLUE', 'YELLOW', 'RED'];
 }
 
+// 講師の時給（カラー×部門）：所属部門のうち最も高い授業時給を採用（GAS classRateFor 移植）
+function compute_class_rate($staff) {
+  $color = $staff['color_rank'] ?? '';
+  $depts = array_values(array_filter(array_map('trim', explode(',', (string)($staff['departments'] ?? '')))));
+  if ($color === '' || !$depts) return ['class_rate' => 1031, 'ops_rate' => 1031];
+  try {
+    $in = implode(',', array_fill(0, count($depts), '?'));
+    $q = db()->prepare("SELECT MAX(class_rate) cr, MAX(ops_rate) opr FROM pay_rates WHERE tenant_id=1 AND color=? AND department IN ($in)");
+    $q->execute(array_merge([$color], $depts));
+    $r = $q->fetch();
+    return ['class_rate' => (int)($r['cr'] ?: 1031), 'ops_rate' => (int)($r['opr'] ?: 1031)];
+  } catch (Throwable $e) {
+    return ['class_rate' => 1031, 'ops_rate' => 1031]; // pay_rates 未作成でも安全
+  }
+}
+
 // カラー序列（昇格順）。GAS版 StaffService.COLOR_RANKS と一致。
 function color_ranks() {
   return ['WHITE', 'GREEN', 'BLUE', 'YELLOW', 'RED'];
