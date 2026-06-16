@@ -189,6 +189,7 @@ render_header('マイページ', $user, 'mypage.php');
                     <input type="hidden" name="action" value="upload_photo">
                     <input type="file" name="photo" accept="image/jpeg,image/png" class="form-control form-control-sm mb-1" style="width:150px" required>
                     <button class="btn btn-sm btn-outline-primary w-100">写真を登録</button>
+                    <div class="form-text" style="font-size:11px">JPG / PNG（両方可）・上限8MB</div>
                   </form>
                 <?php endif; ?>
               </div>
@@ -231,6 +232,7 @@ render_header('マイページ', $user, 'mypage.php');
       <h5 class="mb-2">研修進捗
         <small class="text-muted">（育成目標カラー: <?= h($targetColor) ?>）</small>
       </h5>
+      <div class="small text-muted mb-2">※ 写真のアップロード（テストの写真提出・顔写真）は JPG / PNG（両方可）、上限 8MB です。</div>
 
       <?php if (!$items): ?>
         <div class="alert alert-light border">対象の研修項目がまだ登録されていません。</div>
