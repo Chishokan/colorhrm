@@ -68,10 +68,29 @@ if ($staff && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') 
       db()->prepare($sql)->execute([
         (int)$staff['tenant_id'], (int)$staff['id'], $itemId, $saved, $staff['name'], (int)$user['id'],
       ]);
-      $flash = 'テスト証跡を提出しました。承認をお待ちください。';
+      $flash = '写真を提出しました。承認をお待ちください。';
     } catch (Throwable $e) {
       $err = $e->getMessage();
     }
+  }
+}
+
+// ------------------------------------------------------------
+// 顔写真のアップロード（本人がマイページから登録）
+// ------------------------------------------------------------
+if ($staff && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'upload_photo') {
+  csrf_check();
+  if (staff_has_column('photo_file')) {
+    try {
+      $saved = save_photo_upload((int)$staff['id'], $_FILES['photo'] ?? []);
+      db()->prepare("UPDATE staff SET photo_file = ? WHERE id = ?")->execute([$saved, (int)$staff['id']]);
+      $staff['photo_file'] = $saved;
+      $flash = '写真を登録しました。';
+    } catch (Throwable $e) {
+      $err = $e->getMessage();
+    }
+  } else {
+    $err = '写真の保存先（photo_file 列）がありません。管理者にお問い合わせください。';
   }
 }
 
@@ -155,11 +174,31 @@ render_header('マイページ', $user, 'mypage.php');
       <div class="card shadow-sm mb-4">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-start">
-            <div>
-              <h4 class="mb-1"><?= h($staff['name']) ?></h4>
-              <div class="text-muted small">
-                <?= h($staff['departments']) ?> / <?= h($staff['school']) ?>
-                <?php if (!empty($staff['mentor'])): ?> ・ メンター: <?= h($staff['mentor']) ?><?php endif; ?>
+            <div class="d-flex gap-3">
+              <div class="text-center">
+                <?php if (staff_has_column('photo_file') && !empty($staff['photo_file'])): ?>
+                  <img src="photo_view.php?id=<?= (int)$staff['id'] ?>&v=<?= h(substr((string)$staff['photo_file'],-12)) ?>" alt="顔写真"
+                       style="width:84px;height:84px;object-fit:cover;border-radius:8px" class="border mb-1">
+                <?php else: ?>
+                  <div class="bg-light border d-flex align-items-center justify-content-center mb-1"
+                       style="width:84px;height:84px;border-radius:8px;font-size:11px;color:#999">写真なし</div>
+                <?php endif; ?>
+                <?php if (staff_has_column('photo_file')): ?>
+                  <form method="post" enctype="multipart/form-data" class="small">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="upload_photo">
+                    <input type="file" name="photo" accept="image/jpeg,image/png" class="form-control form-control-sm mb-1" style="width:150px" required>
+                    <button class="btn btn-sm btn-outline-primary w-100">写真を登録</button>
+                  </form>
+                <?php endif; ?>
+              </div>
+              <div>
+                <h4 class="mb-1"><?= h($staff['name']) ?></h4>
+                <div class="text-muted small">
+                  <?= h($staff['departments']) ?> / <?= h($staff['school']) ?>
+                  <?php if (!empty($staff['mentor'])): ?> ・ メンター: <?= h($staff['mentor']) ?><?php endif; ?>
+                </div>
+                <a href="<?= h(rtrim(config_value('payroll_url', '/colorhrm-pay/'), '/')) ?>/shifts.php" class="btn btn-sm btn-success mt-2">💴 シフト申請・給与へ</a>
               </div>
             </div>
             <div class="text-end">
@@ -234,7 +273,7 @@ render_header('マイページ', $user, 'mypage.php');
                           <input type="hidden" name="action" value="submit_test">
                           <input type="hidden" name="item_id" value="<?= (int)$it['id'] ?>">
                           <input type="file" name="evidence" accept="image/jpeg,image/png" class="form-control form-control-sm" style="width:170px" required>
-                          <button class="btn btn-sm btn-primary">証跡提出</button>
+                          <button class="btn btn-sm btn-primary">写真提出</button>
                         </form>
                       <?php else: ?>
                         <form method="post" class="d-inline-flex gap-1">

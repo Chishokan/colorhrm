@@ -32,7 +32,12 @@ render_header('Color HRM 講師一覧', $user, 'index.php');
           <div class="card h-100 shadow-sm position-relative" style="cursor:pointer">
             <div class="card-body">
               <div class="d-flex justify-content-between align-items-start mb-2">
-                <h6 class="mb-0"><a href="staff_detail.php?id=<?= (int)$s['id'] ?>" class="text-decoration-none stretched-link"><?= h($s['name']) ?></a></h6>
+                <div class="d-flex gap-2 align-items-center">
+                  <?php if (!empty($s['photo_file'])): ?>
+                    <img src="photo_view.php?id=<?= (int)$s['id'] ?>" alt="" style="width:40px;height:40px;object-fit:cover;border-radius:6px" class="border">
+                  <?php endif; ?>
+                  <h6 class="mb-0"><a href="staff_detail.php?id=<?= (int)$s['id'] ?>" class="text-decoration-none stretched-link"><?= h($s['name']) ?></a></h6>
+                </div>
                 <span class="badge" style="<?= color_style($s['color_rank']) ?>"><?= h($s['color_rank']) ?></span>
               </div>
               <div class="small text-muted">
@@ -44,6 +49,11 @@ render_header('Color HRM 講師一覧', $user, 'index.php');
               </div>
               <?php $gs = compute_goal_summary($s); ?>
               <div class="mt-2"><?= goal_bar_html($gs, true) ?></div>
+              <?php if (in_array($user['role'] ?? '', ['admin', 'staff'], true)): ?>
+                <div class="mt-2 position-relative" style="z-index:2">
+                  <a href="training.php?staff_id=<?= (int)$s['id'] ?>" class="btn btn-sm btn-outline-primary">研修進捗</a>
+                </div>
+              <?php endif; ?>
             </div>
           </div>
         </div>

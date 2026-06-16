@@ -107,7 +107,7 @@ render_header('研修管理', $user, 'training.php');
                 <td class="small">
                   <?= h($p['memo']) ?>
                   <?php if (!empty($p['evidence_file'])): ?>
-                    <a href="evidence_view.php?id=<?= (int)$p['id'] ?>" target="_blank" class="badge bg-secondary text-decoration-none">証跡</a>
+                    <a href="evidence_view.php?id=<?= (int)$p['id'] ?>" target="_blank" class="badge bg-secondary text-decoration-none">写真</a>
                   <?php endif; ?>
                 </td>
                 <td class="text-end">

@@ -97,10 +97,15 @@ render_header('講師: ' . $s['name'], $user, 'index.php');
 ?>
   <div class="container py-4" style="max-width:900px">
     <div class="d-flex justify-content-between align-items-center mb-3">
-      <h4 class="mb-0"><?= h($s['name']) ?>
-        <span class="badge" style="<?= color_style($s['color_rank']) ?>"><?= h($s['color_rank']) ?></span>
-        <?php if (!$s['is_active']): ?><span class="badge bg-secondary">退職</span><?php endif; ?>
-      </h4>
+      <div class="d-flex align-items-center gap-3">
+        <?php if (staff_has_column('photo_file') && !empty($s['photo_file'])): ?>
+          <img src="photo_view.php?id=<?= (int)$s['id'] ?>" alt="顔写真" style="width:56px;height:56px;object-fit:cover;border-radius:8px" class="border">
+        <?php endif; ?>
+        <h4 class="mb-0"><?= h($s['name']) ?>
+          <span class="badge" style="<?= color_style($s['color_rank']) ?>"><?= h($s['color_rank']) ?></span>
+          <?php if (!$s['is_active']): ?><span class="badge bg-secondary">退職</span><?php endif; ?>
+        </h4>
+      </div>
       <a href="index.php" class="btn btn-sm btn-outline-secondary">← 講師一覧へ</a>
     </div>
 
