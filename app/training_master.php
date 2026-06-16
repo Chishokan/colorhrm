@@ -84,14 +84,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ------------------------------------------------------------
-// 一覧（対象カラー → 部門 → 表示順）
+// 一覧（対象カラー → 部門 → 表示順）＋ キーワード検索
 // ------------------------------------------------------------
-$rows = db()->query(
+$q = trim($_GET['q'] ?? '');
+$where = '';
+$params = [];
+if ($q !== '') {
+  $like  = '%' . $q . '%';
+  $conds = ['ti.item_name LIKE ?', 'ti.department LIKE ?', 'ti.target_color LIKE ?'];
+  $params = [$like, $like, $like];
+  if ($hasModule) { $conds[] = 'ti.module_key LIKE ?'; $params[] = $like; }
+  if ($hasType)   { $conds[] = 'ti.type LIKE ?';       $params[] = $like; }
+  $where = 'WHERE (' . implode(' OR ', $conds) . ')';
+}
+$stmt = db()->prepare(
   "SELECT ti.*,
           (SELECT COUNT(*) FROM training_progress tp WHERE tp.training_item_id = ti.id) AS progress_count
      FROM training_items ti
+     $where
     ORDER BY FIELD(ti.target_color,'GREEN','BLUE','YELLOW','RED'), ti.department, ti.sort_order, ti.id"
-)->fetchAll();
+);
+$stmt->execute($params);
+$rows = $stmt->fetchAll();
 
 // 対象カラーごとにグルーピング
 $byColor = [];
@@ -109,6 +123,21 @@ render_header('研修マスター', $user, 'training_master.php');
 
     <?php if ($flash): ?><div class="alert alert-success py-2"><?= h($flash) ?></div><?php endif; ?>
     <?php if ($err): ?><div class="alert alert-danger py-2"><?= h($err) ?></div><?php endif; ?>
+
+    <!-- 検索 -->
+    <form method="get" class="row g-2 align-items-end mb-3">
+      <div class="col-md-6">
+        <label class="form-label small mb-0">研修項目を検索</label>
+        <div class="input-group input-group-sm">
+          <input name="q" value="<?= h($q) ?>" class="form-control" placeholder="研修項目名・部門・モジュール・種別・カラーで検索">
+          <button class="btn btn-outline-primary">検索</button>
+          <?php if ($q !== ''): ?><a href="training_master.php" class="btn btn-outline-secondary">クリア</a><?php endif; ?>
+        </div>
+      </div>
+      <?php if ($q !== ''): ?>
+        <div class="col-auto"><span class="text-muted small">「<?= h($q) ?>」の検索結果: <?= count($rows) ?>件</span></div>
+      <?php endif; ?>
+    </form>
 
     <!-- 新規追加 -->
     <div class="card shadow-sm mb-4">
@@ -165,7 +194,9 @@ render_header('研修マスター', $user, 'training_master.php');
 
     <!-- 一覧（カラーごと） -->
     <?php if (!$rows): ?>
-      <div class="alert alert-light border">研修項目がまだ登録されていません。上のフォームから追加してください。</div>
+      <div class="alert alert-light border">
+        <?= $q !== '' ? '「' . h($q) . '」に該当する研修項目はありません。' : '研修項目がまだ登録されていません。上のフォームから追加してください。' ?>
+      </div>
     <?php endif; ?>
 
     <?php foreach (training_target_colors() as $color): ?>
