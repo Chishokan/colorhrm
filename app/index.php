@@ -14,7 +14,12 @@ render_header('Color HRM 講師一覧', $user, 'index.php');
   <div class="container py-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h2 class="mb-0">講師一覧（<?= count($rows) ?>名）</h2>
-      <span class="badge bg-success">DB取得 <?= $ms ?> ms</span>
+      <div class="d-flex align-items-center gap-2">
+        <?php if (in_array($user['role'] ?? '', ['admin', 'staff'], true)): ?>
+          <a href="staff_new.php" class="btn btn-sm btn-success">＋ 講師を追加</a>
+        <?php endif; ?>
+        <span class="badge bg-success">DB取得 <?= $ms ?> ms</span>
+      </div>
     </div>
 
     <div class="row g-3">

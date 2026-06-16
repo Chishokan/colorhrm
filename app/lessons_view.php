@@ -13,12 +13,21 @@ if ($mk !== '') {
   $lessons = $q->fetchAll();
 }
 
+// 戻り先：別タブ（target=_blank）で開くと history.back() が効かないため、
+// 参照元（同一ホスト）があればそこへ、無ければロール別の既定ページへ。
+$back = (($user['role'] ?? '') === 'teacher') ? 'mypage.php' : 'lessons.php';
+$ref  = $_SERVER['HTTP_REFERER'] ?? '';
+$host = $_SERVER['HTTP_HOST'] ?? '';
+if ($ref !== '' && $host !== '' && strpos($ref, '://' . $host) !== false && strpos($ref, 'lessons_view.php') === false) {
+  $back = $ref;
+}
+
 render_header('研修: ' . $mk, $user, '');
 ?>
   <div class="container py-4" style="max-width:760px">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h4 class="mb-0">研修コンテンツ <span class="badge bg-dark"><?= h($mk) ?></span></h4>
-      <a href="javascript:history.back()" class="btn btn-sm btn-outline-secondary">← 戻る</a>
+      <a href="<?= h($back) ?>" class="btn btn-sm btn-outline-secondary">← 戻る</a>
     </div>
     <?php if (!$lessons): ?>
       <div class="alert alert-light border">このモジュールのコンテンツはまだありません。</div>
