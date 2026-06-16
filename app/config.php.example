@@ -24,4 +24,15 @@ return [
   // 給与・シフトアプリ（/colorhrm-pay/）のURL。同一ドメイン配下なら既定のままでOK。
   // 講師詳細から「給与・シフト」「時給表」へのリンク先になります。
   'payroll_url' => '/colorhrm-pay/',
+
+  // ============================================================
+  // アカウント発行メール（ユーザー作成・PW再発行時に送信）。PHP mail() を使用。
+  //   mail_enabled を false にすると一切送信しません（検証用）。
+  //   from は必ず chishokan.co.jp のアドレスにする（Xサーバーでの到達性のため）。
+  // ============================================================
+  'mail_enabled'   => true,
+  'mail_from'      => 'info@chishokan.co.jp',
+  'mail_from_name' => 'Color HRM（智翔館）',
+  // ログインURLの基点。空なら実行中のURLから自動生成します。
+  'app_base_url'   => 'https://chishokan.co.jp/colorhrm/',
 ];
