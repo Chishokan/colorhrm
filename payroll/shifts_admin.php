@@ -32,6 +32,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   } elseif ($action === 'reject') {
     db()->prepare("UPDATE shift_applications SET status='却下' WHERE id=? AND status='申請中'")->execute([(int)($_POST['id'] ?? 0)]);
     $flash = '申請を却下しました。';
+  } elseif ($action === 'confirm_month') {
+    // その月の申請中をまとめて確定シフト化（授業分は0で確定、後から各行で入力）
+    $m = valid_month($_POST['month'] ?? '');
+    $list = db()->prepare("SELECT * FROM shift_applications WHERE status='申請中' AND DATE_FORMAT(work_date,'%Y-%m')=?");
+    $list->execute([$m]);
+    $rows = $list->fetchAll();
+    db()->beginTransaction();
+    try {
+      $ins = db()->prepare("INSERT INTO shift_days (tenant_id,staff_id,work_date,start_time,end_time,class_minutes,note,application_id) VALUES (1,?,?,?,?,?,?,?)");
+      $upd = db()->prepare("UPDATE shift_applications SET status='確定' WHERE id=?");
+      $n = 0;
+      foreach ($rows as $a) {
+        $ins->execute([$a['staff_id'], $a['work_date'], $a['start_time'], $a['end_time'], 0, $a['note'], $a['id']]);
+        $upd->execute([$a['id']]);
+        $n++;
+      }
+      db()->commit();
+      $flash = "{$n}件をまとめて確定しました（授業分は各行で入力してください）。";
+    } catch (Throwable $e) {
+      db()->rollBack();
+      $err = '一括確定に失敗しました: ' . $e->getMessage();
+    }
   } elseif ($action === 'add_day') {
     $sid = (int)($_POST['staff_id'] ?? 0);
     $d   = trim($_POST['work_date'] ?? '');
@@ -97,7 +119,17 @@ render_header('シフト管理', $user, 'shifts_admin.php');
     <?php if ($err): ?><div class="alert alert-danger py-2"><?= h($err) ?></div><?php endif; ?>
 
     <div class="card shadow-sm mb-3">
-      <div class="card-header">申請中（<?= count($pending) ?>件）— 授業分を入れて「確定」</div>
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>申請中（<?= count($pending) ?>件）— 授業分を入れて「確定」</span>
+        <?php if ($pending): ?>
+          <form method="post" onsubmit="return confirm('<?= h($month) ?> の申請 <?= count($pending) ?>件を授業分0でまとめて確定します。よろしいですか？（授業分は後で各行で入力できます）');">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="confirm_month">
+            <input type="hidden" name="month" value="<?= h($month) ?>">
+            <button class="btn btn-sm btn-success">この月をまとめて確定</button>
+          </form>
+        <?php endif; ?>
+      </div>
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
           <thead class="table-light"><tr><th>講師</th><th>日付</th><th>時間</th><th class="text-end">稼働</th><th>メモ</th><th style="width:120px">授業(分)</th><th></th></tr></thead>

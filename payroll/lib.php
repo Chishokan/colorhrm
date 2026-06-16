@@ -86,7 +86,7 @@ function nav_links_for($user) {
   $role  = $user['role'] ?? '';
   $links = [];
   if ($role === 'teacher') {
-    $links['shifts.php'] = 'シフト申請';
+    $links['shifts.php'] = 'シフト可能登録';
   }
   if ($role === 'admin' || $role === 'staff') {
     $links['index.php']        = 'ダッシュボード';
@@ -145,6 +145,26 @@ function hm($t) { return substr((string)$t, 0, 5); }
 // 月文字列（YYYY-MM）を検証し、不正なら当月を返す
 function valid_month($m) {
   return preg_match('/^\d{4}-\d{2}$/', (string)$m) ? $m : date('Y-m');
+}
+
+// 曜日（日本語）
+function jp_weekdays() { return ['日', '月', '火', '水', '木', '金', '土']; }
+
+// 指定月の各日 [['date'=>'Y-m-d','day'=>int,'dow'=>0..6], ...]
+function month_days($month) {
+  $month = valid_month($month);
+  $n = (int)date('t', strtotime($month . '-01'));
+  $out = [];
+  for ($d = 1; $d <= $n; $d++) {
+    $date = sprintf('%s-%02d', $month, $d);
+    $out[] = ['date' => $date, 'day' => $d, 'dow' => (int)date('w', strtotime($date))];
+  }
+  return $out;
+}
+
+// シフト可能登録ができる月の範囲 [当月, 6か月先]
+function shift_month_window() {
+  return [date('Y-m'), date('Y-m', strtotime('first day of this month +6 month'))];
 }
 
 // 交通費（GAS版準拠）：勤務日数 ≤5 は 日数×200、超過は ceil(日数/5)×1000。
