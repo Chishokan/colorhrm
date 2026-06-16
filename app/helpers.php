@@ -24,6 +24,40 @@ function home_url_for($user) {
 }
 
 // ------------------------------------------------------------
+// 講師の顔写真（PII性は中。認証付き配信 photo_view.php 経由で表示）
+// ------------------------------------------------------------
+function photo_dir() {
+  return __DIR__ . '/uploads/photos';
+}
+// アップロードを保存し、staff.photo_file に格納するファイル名を返す。失敗時は例外。
+function save_photo_upload($staffId, $file) {
+  if (!isset($file['error']) || $file['error'] !== UPLOAD_ERR_OK) {
+    throw new RuntimeException('アップロードに失敗しました（コード: ' . ($file['error'] ?? '不明') . '）。');
+  }
+  if ($file['size'] > 8 * 1024 * 1024) {
+    throw new RuntimeException('ファイルが大きすぎます（上限8MB）。');
+  }
+  $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+  $allowed = resume_allowed_ext(); // jpg/jpeg/png
+  $finfo = finfo_open(FILEINFO_MIME_TYPE);
+  $mime  = finfo_file($finfo, $file['tmp_name']);
+  finfo_close($finfo);
+  if (!isset($allowed[$ext]) || !in_array($mime, $allowed, true)) {
+    throw new RuntimeException('JPG / PNG 画像のみアップロードできます。');
+  }
+  $dir = photo_dir();
+  if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
+    throw new RuntimeException('保存先を作成できません。');
+  }
+  $name = 'staff' . (int)$staffId . '_' . date('YmdHis') . '_' . bin2hex(random_bytes(3)) . '.' . $ext;
+  $dest = $dir . '/' . $name;
+  if (!move_uploaded_file($file['tmp_name'], $dest) && !@rename($file['tmp_name'], $dest)) {
+    throw new RuntimeException('ファイルの保存に失敗しました。');
+  }
+  return $name;
+}
+
+// ------------------------------------------------------------
 // アカウント発行メール（PHP mail() / mb_send_mail）
 //   送信タイミング：ユーザー個別作成・講師一括作成・PW再発行。
 // ------------------------------------------------------------

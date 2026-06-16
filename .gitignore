@@ -36,6 +36,9 @@ app/uploads/imports/*
 app/uploads/evidence/*
 !app/uploads/evidence/.htaccess
 !app/uploads/evidence/.gitkeep
+app/uploads/photos/*
+!app/uploads/photos/.htaccess
+!app/uploads/photos/.gitkeep
 
 # OS / エディタ
 .DS_Store
