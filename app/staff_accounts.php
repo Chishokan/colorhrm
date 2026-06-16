@@ -82,7 +82,11 @@ render_header('講師アカウント一括作成', $user, 'users.php');
   <div class="container py-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h4 class="mb-0">講師アカウント一括作成</h4>
-      <a href="users.php" class="btn btn-sm btn-outline-secondary">← ユーザー管理へ</a>
+      <div class="d-flex gap-2">
+        <a href="staff_io.php?export=csv" class="btn btn-sm btn-success">講師情報をCSVエクスポート</a>
+        <a href="staff_io.php" class="btn btn-sm btn-outline-success">CSVインポート</a>
+        <a href="users.php" class="btn btn-sm btn-outline-secondary">← ユーザー管理へ</a>
+      </div>
     </div>
 
     <?php if ($flash): ?><div class="alert alert-success py-2"><?= h($flash) ?></div><?php endif; ?>

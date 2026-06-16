@@ -556,6 +556,71 @@ function import_dir() {
   return __DIR__ . '/uploads/imports';
 }
 
+// ------------------------------------------------------------
+// 講師（staff）情報の CSV 入出力（エクスポート/インポート）
+//   - id を含めると更新（upsert）、無ければメール一致で更新、どちらも無ければ新規。
+// ------------------------------------------------------------
+// インポートで設定できる列（id は突合キーなので別扱い）
+function staff_import_columns() {
+  return [
+    'name', 'email', 'departments', 'school', 'employment_type',
+    'color_rank', 'color_certified_date', 'target_rank', 'target_date',
+    'mentor', 'recruiting_media', 'referrer', 'hire_date', 'is_active', 'use_payroll',
+  ];
+}
+// エクスポート/テンプレートの列順（id を先頭に）
+function staff_export_columns() {
+  return array_merge(['id'], staff_import_columns());
+}
+// 見出し（日本語 / snake_case / GAS版）→ staff 列 の対応
+function staff_import_alias_map() {
+  return [
+    'id' => 'id', 'ID' => 'id', '講師ID' => 'id',
+    'name' => 'name', '氏名' => 'name', '名前' => 'name', '講師名' => 'name',
+    'email' => 'email', 'メール' => 'email', 'メールアドレス' => 'email', 'Email' => 'email',
+    'departments' => 'departments', '部門' => 'departments', '部署' => 'departments', '所属' => 'departments',
+    'school' => 'school', '校舎' => 'school',
+    'employment_type' => 'employment_type', '雇用形態' => 'employment_type',
+    'color_rank' => 'color_rank', 'カラー' => 'color_rank', '現在カラー' => 'color_rank', '現在のカラー' => 'color_rank',
+    'color_certified_date' => 'color_certified_date', 'カラー認定日' => 'color_certified_date', '認定日' => 'color_certified_date',
+    'target_rank' => 'target_rank', '目標カラー' => 'target_rank', '育成目標' => 'target_rank', '育成目標カラー' => 'target_rank',
+    'target_date' => 'target_date', '目標日' => 'target_date', '目標期日' => 'target_date',
+    'mentor' => 'mentor', 'メンター' => 'mentor',
+    'recruiting_media' => 'recruiting_media', '求人媒体' => 'recruiting_media', '応募媒体' => 'recruiting_media',
+    'referrer' => 'referrer', '紹介者' => 'referrer',
+    'hire_date' => 'hire_date', '入社日' => 'hire_date', '採用日' => 'hire_date',
+    'is_active' => 'is_active', '在籍' => 'is_active', '有効' => 'is_active', '在籍状況' => 'is_active',
+    'use_payroll' => 'use_payroll', '給与対象' => 'use_payroll', '給与システム対象' => 'use_payroll',
+  ];
+}
+// CSVセル値を staff の列型に正規化
+function normalize_staff_value($col, $val) {
+  $val = trim((string)$val);
+  $dateCols  = ['hire_date', 'target_date', 'color_certified_date'];
+  $boolCols  = ['is_active', 'use_payroll'];
+  $colorCols = ['color_rank', 'target_rank'];
+  if ($col === 'id') {
+    return $val === '' ? null : (int)$val;
+  }
+  if (in_array($col, $boolCols, true)) {
+    if ($val === '') return null; // 空はデフォルト/据え置きで扱う
+    return in_array(mb_strtolower($val), ['1', 'true', '○', '〇', 'yes', 'y', '有効', '在籍', '対象', 'はい'], true) ? 1 : 0;
+  }
+  if (in_array($col, $dateCols, true)) {
+    if ($val === '') return null;
+    $s = str_replace(['/', '.'], '-', $val);
+    if (preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})/', $s, $m)) {
+      return sprintf('%04d-%02d-%02d', $m[1], $m[2], $m[3]);
+    }
+    return null;
+  }
+  if (in_array($col, $colorCols, true)) {
+    $u = strtoupper($val);
+    return in_array($u, color_ranks(), true) ? $u : '';
+  }
+  return $val;
+}
+
 // 履歴書テキストからフィールドを推定（GAS版 OcrService.parseResumeText 移植）
 function parse_resume_text($text) {
   $result = [
