@@ -390,6 +390,8 @@ function render_header($title, $user, $active = '') {
     $cls = ($href === $active) ? 'btn btn-sm btn-light me-1' : 'btn btn-sm btn-outline-light me-1';
     echo '<a href="' . h($href) . '" class="' . $cls . '">' . h($label) . '</a>';
   }
+  $payroll = config_value('payroll_url', '/colorhrm-pay/');
+  echo '<a href="' . h($payroll) . '" class="btn btn-sm btn-outline-light me-1">💴 給与・シフト</a>';
   echo '</div>';
   echo '<span class="text-white-50 me-3 small">'
      . h($user['display_name'] ?: $user['email']) . '（' . h($role) . '）</span>';
