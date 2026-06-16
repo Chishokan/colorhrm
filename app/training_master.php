@@ -5,6 +5,21 @@ require_login();
 require_role('admin');
 $user = current_user();
 
+// training_items の実在カラム（007未適用環境でも壊さない）
+$tiCols = [];
+foreach (db()->query("SHOW COLUMNS FROM training_items")->fetchAll() as $c) { $tiCols[$c['Field']] = true; }
+$hasType   = isset($tiCols['type']);
+$hasModule = isset($tiCols['module_key']);
+// モジュール候補（lessons ＋ training_items の既存キー）
+$moduleKeys = [];
+if ($hasModule) {
+  $moduleKeys = db()->query(
+    "SELECT DISTINCT module_key FROM lessons WHERE module_key<>''
+     UNION SELECT DISTINCT module_key FROM training_items WHERE module_key<>''
+     ORDER BY module_key"
+  )->fetchAll(PDO::FETCH_COLUMN);
+}
+
 $flash = '';
 $err   = '';
 
@@ -25,23 +40,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name     = trim($_POST['item_name'] ?? '');
     $sort     = (int)($_POST['sort_order'] ?? 0);
     $required = isset($_POST['is_required']) ? 1 : 0;
+    $type     = trim($_POST['type'] ?? '');
+    $module   = trim($_POST['module_key'] ?? '');
 
     if ($name === '') {
       $err = '研修項目名は必須です。';
     } elseif (!valid_color($color)) {
       $err = '対象カラーが不正です。';
     } elseif ($action === 'create') {
-      $sql = "INSERT INTO training_items
-                (tenant_id, department, target_color, item_name, sort_order, is_required)
-              VALUES (1, ?, ?, ?, ?, ?)";
-      db()->prepare($sql)->execute([$dept, $color, $name, $sort, $required]);
+      $cols = ['tenant_id', 'department', 'target_color', 'item_name', 'sort_order', 'is_required'];
+      $vals = [1, $dept, $color, $name, $sort, $required];
+      if ($hasType)   { $cols[] = 'type';       $vals[] = $type; }
+      if ($hasModule) { $cols[] = 'module_key'; $vals[] = $module; }
+      $ph = implode(',', array_fill(0, count($cols), '?'));
+      db()->prepare("INSERT INTO training_items (" . implode(',', $cols) . ") VALUES ($ph)")->execute($vals);
       $flash = "研修項目「{$name}」を追加しました。";
     } else { // update
       $id  = (int)($_POST['id'] ?? 0);
-      $sql = "UPDATE training_items
-                 SET department = ?, target_color = ?, item_name = ?, sort_order = ?, is_required = ?
-               WHERE id = ?";
-      db()->prepare($sql)->execute([$dept, $color, $name, $sort, $required, $id]);
+      $set  = ['department=?', 'target_color=?', 'item_name=?', 'sort_order=?', 'is_required=?'];
+      $vals = [$dept, $color, $name, $sort, $required];
+      if ($hasType)   { $set[] = 'type=?';       $vals[] = $type; }
+      if ($hasModule) { $set[] = 'module_key=?'; $vals[] = $module; }
+      $vals[] = $id;
+      db()->prepare("UPDATE training_items SET " . implode(',', $set) . " WHERE id = ?")->execute($vals);
       $flash = '研修項目を更新しました。';
     }
 
@@ -82,6 +103,10 @@ render_header('研修マスター', $user, 'training_master.php');
 ?>
   <div class="container py-4">
 
+    <?php if ($hasModule): ?>
+    <datalist id="mklist"><?php foreach ($moduleKeys as $m): ?><option value="<?= h($m) ?>"><?php endforeach; ?></datalist>
+    <?php endif; ?>
+
     <?php if ($flash): ?><div class="alert alert-success py-2"><?= h($flash) ?></div><?php endif; ?>
     <?php if ($err): ?><div class="alert alert-danger py-2"><?= h($err) ?></div><?php endif; ?>
 
@@ -116,6 +141,21 @@ render_header('研修マスター', $user, 'training_master.php');
             <input class="form-check-input" type="checkbox" name="is_required" value="1" id="req_new" checked>
             <label class="form-check-label small" for="req_new">必須</label>
           </div>
+          <?php if ($hasType): ?>
+          <div class="col-md-1">
+            <label class="form-label small mb-0">種別</label>
+            <select name="type" class="form-select form-select-sm">
+              <option value="">通常</option>
+              <option value="テスト">テスト</option>
+            </select>
+          </div>
+          <?php endif; ?>
+          <?php if ($hasModule): ?>
+          <div class="col-md-2">
+            <label class="form-label small mb-0">モジュール（教材）</label>
+            <input name="module_key" list="mklist" class="form-control form-control-sm" placeholder="例: CB">
+          </div>
+          <?php endif; ?>
           <div class="col-md-1">
             <button class="btn btn-sm btn-primary w-100">追加</button>
           </div>
@@ -174,6 +214,24 @@ render_header('研修マスター', $user, 'training_master.php');
                 <button class="btn btn-sm btn-outline-primary">保存</button>
                 <span class="text-muted small">(<?= (int)$it['progress_count'] ?>)</span>
               </div>
+              <?php if ($hasType || $hasModule): ?>
+              <div class="col-12 d-flex flex-wrap gap-2 align-items-center small mt-1 ps-2">
+                <?php if ($hasType): ?>
+                  <span class="text-muted">種別</span>
+                  <select name="type" class="form-select form-select-sm" style="max-width:110px">
+                    <option value="" <?= ($it['type'] ?? '') === '' ? 'selected' : '' ?>>通常</option>
+                    <option value="テスト" <?= ($it['type'] ?? '') === 'テスト' ? 'selected' : '' ?>>テスト</option>
+                  </select>
+                <?php endif; ?>
+                <?php if ($hasModule): ?>
+                  <span class="text-muted">モジュール（教材）</span>
+                  <input name="module_key" list="mklist" value="<?= h($it['module_key'] ?? '') ?>" class="form-control form-control-sm" style="max-width:160px" placeholder="未設定">
+                  <?php if (!empty($it['module_key'])): ?>
+                    <a href="lessons_view.php?module=<?= rawurlencode($it['module_key']) ?>" target="_blank" class="badge bg-info text-dark text-decoration-none">📺 教材プレビュー</a>
+                  <?php endif; ?>
+                <?php endif; ?>
+              </div>
+              <?php endif; ?>
             </form>
             <!-- 削除は別フォーム -->
             <form method="post" class="mb-3 text-end"
@@ -190,7 +248,9 @@ render_header('研修マスター', $user, 'training_master.php');
 
     <p class="text-muted small">
       ※ 「部門」を空にすると、その対象カラーの全講師に共通の項目になります。
-      講師には <code>departments</code> と <code>target_rank</code>（育成目標）の一致で表示されます。
+      講師には <code>departments</code> と <code>target_rank</code>（育成目標）の一致で表示されます。<br>
+      ※ 「モジュール（教材）」に同じキーを設定した研修コンテンツが、講師のマイページで研修項目から「📺 教材」として一覧表示されます。
+      コンテンツ（動画/資料）の登録は <a href="lessons.php">研修動画</a> 画面で行います。
     </p>
   </div>
 <?php render_footer(); ?>
