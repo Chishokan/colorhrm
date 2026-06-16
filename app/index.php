@@ -18,6 +18,10 @@ render_header('Color HRM 講師一覧', $user, 'index.php');
         <?php if (in_array($user['role'] ?? '', ['admin', 'staff'], true)): ?>
           <a href="staff_new.php" class="btn btn-sm btn-success">＋ 講師を追加</a>
         <?php endif; ?>
+        <?php if (($user['role'] ?? '') === 'admin'): ?>
+          <a href="staff_io.php?export=csv" class="btn btn-sm btn-outline-success">CSVエクスポート</a>
+          <a href="staff_io.php" class="btn btn-sm btn-outline-success">CSVインポート</a>
+        <?php endif; ?>
         <span class="badge bg-success">DB取得 <?= $ms ?> ms</span>
       </div>
     </div>
