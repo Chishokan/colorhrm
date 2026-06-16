@@ -85,8 +85,12 @@ function csrf_check() {
 function nav_links_for($user) {
   $role  = $user['role'] ?? '';
   $links = [];
+  if ($role === 'teacher') {
+    $links['shifts.php'] = 'シフト申請';
+  }
   if ($role === 'admin' || $role === 'staff') {
-    $links['index.php'] = 'ダッシュボード';
+    $links['index.php']        = 'ダッシュボード';
+    $links['shifts_admin.php'] = 'シフト管理';
   }
   if ($role === 'admin') {
     $links['rates.php'] = '時給表';
@@ -119,3 +123,25 @@ function render_header($title, $user, $active = '') {
 }
 
 function render_footer() { echo '</body></html>'; }
+
+// ------------------------------------------------------------
+// シフト時間ヘルパー
+// ------------------------------------------------------------
+// 開始〜終了（"HH:MM" or "HH:MM:SS"）の稼働分。終了が開始以下なら0。
+function shift_minutes($start, $end) {
+  $s = strtotime('1970-01-01 ' . $start);
+  $e = strtotime('1970-01-01 ' . $end);
+  if ($s === false || $e === false || $e <= $s) return 0;
+  return (int) round(($e - $s) / 60);
+}
+// 分 → "H:MM"
+function fmt_hm($mins) {
+  $mins = max(0, (int)$mins);
+  return sprintf('%d:%02d', intdiv($mins, 60), $mins % 60);
+}
+// "HH:MM:SS" → "HH:MM"
+function hm($t) { return substr((string)$t, 0, 5); }
+// 月文字列（YYYY-MM）を検証し、不正なら当月を返す
+function valid_month($m) {
+  return preg_match('/^\d{4}-\d{2}$/', (string)$m) ? $m : date('Y-m');
+}

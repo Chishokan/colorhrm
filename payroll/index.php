@@ -17,7 +17,8 @@ $hasIsActive   = isset($staffCols['is_active']);
 if ($role === 'teacher') {
   render_header('給与・シフト', $user, '');
   echo '<div class="container py-4"><div class="card shadow-sm"><div class="card-body">';
-  echo '<h5>シフト申請</h5><p class="text-muted">シフト申請機能は準備中です（フェーズD-2）。</p>';
+  echo '<h5>シフト申請</h5><p class="text-muted">シフトの申請・確定状況の確認ができます。</p>';
+  echo '<a href="shifts.php" class="btn btn-success btn-sm me-2">シフト申請へ</a>';
   echo '<a href="' . h(config_value('colorhrm_url', '/colorhrm/')) . 'mypage.php" class="btn btn-outline-secondary btn-sm">マイページ（ColorHRM）へ</a>';
   echo '</div></div></div>';
   render_footer();
@@ -78,6 +79,6 @@ render_header('給与・シフト', $user, 'index.php');
       </div>
     </div>
 
-    <p class="text-muted small mt-3">シフト申請→承認→確定（D-2）、給与計算＋振込一覧（D-3）は順次追加します。</p>
+    <p class="text-muted small mt-3"><a href="shifts_admin.php">シフト管理</a>で申請の確定・編集ができます。給与計算＋振込一覧（D-3）は順次追加します。</p>
   </div>
 <?php render_footer(); ?>

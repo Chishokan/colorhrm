@@ -14,6 +14,8 @@ URL は `https://chishokan.co.jp/colorhrm-pay/`。
 | `auth.php` | 独自認証（セッション共有）。`current_user` / `login_attempt` / `h` |
 | `lib.php` | 給与アプリ用レイアウト・ナビ・CSRF・カラー/時給ヘルパー |
 | `index.php` | ダッシュボード（admin/staff）。講師別の時給一覧＋各機能入口 |
+| `shifts.php` | シフト申請（teacher）。自分のシフト可能を月ごとに申請/取消・確定状況確認 |
+| `shifts_admin.php` | シフト管理（admin/staff）。申請の確定（授業分入力）/却下・確定シフトの追加/編集/削除 |
 | `rates.php` | 時給表（WageRates）管理（admin）。カラー×部門の授業時給/運営時給 |
 | `login.php` / `logout.php` | ログイン / ログアウト |
 | `config.php.example` | DB接続テンプレート |
@@ -22,8 +24,10 @@ URL は `https://chishokan.co.jp/colorhrm-pay/`。
 
 - **D-1（実装済）**：時給表（`pay_rates`）の管理＋講師別時給算出。
   - DB：`migrations/009_phaseD1.sql`（`pay_rates` 25件）。ColorHRM 側で適用済みなら追加不要。
-- **D-2（予定）**：シフト申請→承認→確定（`shift_applications` / `shift_days`）。
-- **D-3（予定）**：給与計算＋振込一覧。
+- **D-2（実装済）**：シフト申請→承認→確定（`shift_applications` / `shift_days`）。
+  - DB：`migrations/010_phaseD2.sql`（`shift_applications` / `shift_days`）。
+  - 稼働分＝開始〜終了の差。授業分は確定時に管理者が入力、運営分＝稼働分−授業分。
+- **D-3（予定）**：給与計算＋振込一覧（時給×分 ＋ 交通費）。
 
 ## デプロイ
 
