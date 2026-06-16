@@ -37,7 +37,60 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: FTPS Deploy (payroll/ -> colorhrm-pay/)
+      # FTP の一時タイムアウト対策に最大3回まで再試行（1・2回目は失敗を握りつぶす）。
+      - name: FTPS Deploy (try 1)
+        id: ftp1
+        continue-on-error: true
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_PAY_SERVER }}
+          username: ${{ secrets.FTP_PAY_USERNAME }}
+          password: ${{ secrets.FTP_PAY_PASSWORD }}
+          protocol: ftps
+          port: 21
+          timeout: 60000
+          local-dir: ./payroll/
+          server-dir: ${{ vars.FTP_PAY_SERVER_DIR || '/' }}
+          dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          exclude: |
+            **/config.php
+            **/config.php.example
+            **/README.md
+            **/.git*
+            **/.DS_Store
+
+      - name: Wait before retry 2
+        if: steps.ftp1.outcome == 'failure'
+        run: sleep 15
+
+      - name: FTPS Deploy (try 2)
+        id: ftp2
+        if: steps.ftp1.outcome == 'failure'
+        continue-on-error: true
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_PAY_SERVER }}
+          username: ${{ secrets.FTP_PAY_USERNAME }}
+          password: ${{ secrets.FTP_PAY_PASSWORD }}
+          protocol: ftps
+          port: 21
+          timeout: 60000
+          local-dir: ./payroll/
+          server-dir: ${{ vars.FTP_PAY_SERVER_DIR || '/' }}
+          dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          exclude: |
+            **/config.php
+            **/config.php.example
+            **/README.md
+            **/.git*
+            **/.DS_Store
+
+      - name: Wait before retry 3
+        if: steps.ftp1.outcome == 'failure' && steps.ftp2.outcome == 'failure'
+        run: sleep 30
+
+      - name: FTPS Deploy (try 3, final)
+        if: steps.ftp1.outcome == 'failure' && steps.ftp2.outcome == 'failure'
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_PAY_SERVER }}
