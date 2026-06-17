@@ -47,3 +47,8 @@ Thumbs.db
 .vscode/
 *.swp
 *~
+
+# tFPDF が実行時に生成する日本語フォントのキャッシュ（絶対パスを含むため非同梱・サーバーで自動生成）
+payroll/tfpdf/font/unifont/*.mtx.php
+payroll/tfpdf/font/unifont/*.cw127.php
+payroll/tfpdf/font/unifont/*.cw.dat

@@ -16,4 +16,14 @@ return [
 
   // ColorHRM（採用・育成）アプリへ戻るリンク先。
   'colorhrm_url' => '/colorhrm/',
+
+  // ============================================================
+  // 給与明細の発行通知メール（PHP mail()）。ColorHRM 側と同じ設定でOK。
+  //   mail_enabled を false にすると送信しません。from は chishokan.co.jp のアドレスに。
+  // ============================================================
+  'mail_enabled'   => true,
+  'mail_from'      => 'info@chishokan.co.jp',
+  'mail_from_name' => '給与・シフト（智翔館）',
+  // 通知メール内のリンク基点（給与アプリのURL）。空なら実行URLから自動生成。
+  'app_base_url'   => 'https://chishokan.co.jp/colorhrm-pay/',
 ];

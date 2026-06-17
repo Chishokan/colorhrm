@@ -16,7 +16,10 @@ URL は `https://chishokan.co.jp/colorhrm-pay/`。
 | `index.php` | ダッシュボード（admin/staff）。講師別の時給一覧＋各機能入口 |
 | `shifts.php` | シフト可能登録（teacher）。月間表で1日=1区分を一括登録（当月〜6か月先・上をコピー）・確定状況確認 |
 | `shifts_admin.php` | シフト管理（admin/staff）。申請の個別/月間まとめて確定（授業分入力）・確定シフトの追加/編集/削除 |
-| `payroll.php` | 給与計算・振込一覧（admin/staff）。確定シフト×時給表で月次集計＋CSV/コピー |
+| `payroll.php` | 給与計算・振込一覧（admin/staff）。確定シフト×時給表で月次集計＋CSV/コピー＋明細の発行/送信 |
+| `payslips.php` | 給与明細（teacher）。発行された自分の明細を一覧・PDFダウンロード |
+| `payslip_pdf.php` | 給与明細PDFの認証付き配信（admin/staff＝全員、teacher＝本人のみ） |
+| `tfpdf/` | 同梱PDFライブラリ（tFPDF）＋日本語フォント（IPAゴシック）。composer不要 |
 | `rates.php` | 時給表（WageRates）管理（admin）。カラー×部門の授業時給/運営時給 |
 | `login.php` / `logout.php` | ログイン / ログアウト |
 | `config.php.example` | DB接続テンプレート |
@@ -31,6 +34,10 @@ URL は `https://chishokan.co.jp/colorhrm-pay/`。
 - **D-3（実装済）**：給与計算＋振込一覧。`payroll.php`。
   - 授業給与=round(授業分/60×授業時給)、運営給与=round(運営分/60×運営時給)。
   - 交通費＝勤務日数 ≤5:日数×200／超過:ceil(日数/5)×1000。CSV/コピー出力。
+- **D-3+（実装済）**：給与明細PDF発行＋メール通知。
+  - DB：`migrations/011_payslips.sql`（`payslips` 発行スナップショット）。
+  - 給与計算画面から個別/一括で発行→メールは通知のみ、講師は `payslips.php` でPDF DL。
+  - PDFは tFPDF＋IPAゴシック同梱（composer不要）。メールは payroll/config.php の `mail_*` を使用。
 
 ## デプロイ
 

@@ -9,7 +9,45 @@ require_role(['admin', 'staff']);
 $user = current_user();
 
 $month = valid_month($_GET['m'] ?? date('Y-m'));
+
+// 明細の発行・送信（POST）：issue_all=全員 / issue_one=個別
+$flash = ''; $err = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['action'] ?? ''), ['issue_all', 'issue_one'], true)) {
+  csrf_check();
+  if (!payslips_table_exists()) {
+    $err = '給与明細テーブル（payslips）がありません。migrations/011_payslips.sql を実行してください。';
+  } else {
+    $onlyId = ($_POST['action'] === 'issue_one') ? (int)($_POST['staff_id'] ?? 0) : null;
+    $issued = issue_payslips($month, (int)$user['id'], $onlyId);
+    $mailed = 0;
+    if ($issued) {
+      $ids = array_map(fn($it) => (int)$it['staff']['id'], $issued);
+      $in  = implode(',', array_fill(0, count($ids), '?'));
+      $em  = db()->prepare("SELECT id, name, email FROM staff WHERE id IN ($in)");
+      $em->execute($ids);
+      $byId = []; foreach ($em->fetchAll() as $s) { $byId[(int)$s['id']] = $s; }
+      $note = db()->prepare("UPDATE payslips SET notified_at=NOW() WHERE staff_id=? AND month=?");
+      foreach ($issued as $it) {
+        $sid = (int)$it['staff']['id']; $s = $byId[$sid] ?? null;
+        if ($s && trim((string)$s['email']) !== '' && send_payslip_notice($s['email'], $s['name'], $month)) {
+          $note->execute([$sid, $month]); $mailed++;
+        }
+      }
+    }
+    $flash = count($issued) . '件の明細を発行しました'
+           . ($mailed ? "（{$mailed}件にメール通知）" : '（メール通知0件：メール未登録、またはメール未設定）') . '。';
+  }
+}
+
 $rows  = compute_month_payroll($month);
+
+// 発行済み明細（月内）を staff_id で引けるように
+$slipBy = [];
+if (payslips_table_exists()) {
+  $ps = db()->prepare("SELECT * FROM payslips WHERE month=?");
+  $ps->execute([$month]);
+  foreach ($ps->fetchAll() as $p) { $slipBy[(int)$p['staff_id']] = $p; }
+}
 
 // CSVダウンロード（ヘッダ出力のため render より前で処理）
 if (($_GET['export'] ?? '') === 'csv') {
@@ -55,8 +93,14 @@ render_header('給与計算', $user, 'payroll.php');
         </div>
         <a class="btn btn-sm btn-success" href="?m=<?= h($month) ?>&export=csv">CSVダウンロード</a>
         <button type="button" class="btn btn-sm btn-outline-success" onclick="copyTsv()">コピー</button>
+        <form method="post" class="d-inline" onsubmit="return confirm('<?= h($month) ?> の給与明細を対象者全員に発行し、メール通知します。よろしいですか？');">
+          <?= csrf_field() ?><input type="hidden" name="action" value="issue_all">
+          <button class="btn btn-sm btn-primary">全員に発行・送信</button>
+        </form>
       </div>
     </div>
+    <?php if ($flash): ?><div class="alert alert-success py-2"><?= h($flash) ?></div><?php endif; ?>
+    <?php if ($err): ?><div class="alert alert-danger py-2"><?= h($err) ?></div><?php endif; ?>
     <p class="text-muted small">確定シフト（シフト管理で確定したもの）と時給表から計算します。授業給与=round(授業分/60×授業時給)、運営給与=round(運営分/60×運営時給)、交通費は勤務日数で算定（≤5日:日数×200／超過:切上げ(日数/5)×1000）。</p>
 
     <div class="card shadow-sm">
@@ -67,7 +111,7 @@ render_header('給与計算', $user, 'payroll.php');
               <th>講師</th><th>カラー</th><th class="text-end">勤務日数</th>
               <th class="text-end">授業</th><th class="text-end">運営</th>
               <th class="text-end">授業給与</th><th class="text-end">運営給与</th>
-              <th class="text-end">交通費</th><th class="text-end">合計</th>
+              <th class="text-end">交通費</th><th class="text-end">合計</th><th>明細</th>
             </tr>
           </thead>
           <tbody>
@@ -82,10 +126,20 @@ render_header('給与計算', $user, 'payroll.php');
                 <td class="text-end">¥<?= number_format($r['ops_pay']) ?></td>
                 <td class="text-end">¥<?= number_format($r['transport']) ?></td>
                 <td class="text-end fw-bold">¥<?= number_format($r['total']) ?></td>
+                <td class="text-nowrap">
+                  <?php $sl = $slipBy[(int)$r['staff']['id']] ?? null; ?>
+                  <?php if ($sl): ?>
+                    <a href="payslip_pdf.php?id=<?= (int)$sl['id'] ?>" target="_blank" class="badge bg-success text-decoration-none">PDF</a>
+                    <?php if (!empty($sl['notified_at'])): ?><span class="badge bg-info text-dark" title="<?= h($sl['notified_at']) ?>">通知済</span><?php endif; ?>
+                    <form method="post" class="d-inline"><?= csrf_field() ?><input type="hidden" name="action" value="issue_one"><input type="hidden" name="staff_id" value="<?= (int)$r['staff']['id'] ?>"><button class="btn btn-sm btn-link p-0">再発行</button></form>
+                  <?php else: ?>
+                    <form method="post" class="d-inline"><?= csrf_field() ?><input type="hidden" name="action" value="issue_one"><input type="hidden" name="staff_id" value="<?= (int)$r['staff']['id'] ?>"><button class="btn btn-sm btn-outline-primary">発行・送信</button></form>
+                  <?php endif; ?>
+                </td>
               </tr>
             <?php endforeach; ?>
             <?php if (!$rows): ?>
-              <tr><td colspan="9" class="text-center text-muted py-4">この月の確定シフトはありません。<a href="shifts_admin.php?m=<?= h($month) ?>">シフト管理</a>で確定してください。</td></tr>
+              <tr><td colspan="10" class="text-center text-muted py-4">この月の確定シフトはありません。<a href="shifts_admin.php?m=<?= h($month) ?>">シフト管理</a>で確定してください。</td></tr>
             <?php else: ?>
               <tr class="table-light fw-bold">
                 <td colspan="5" class="text-end">合計</td>
@@ -93,6 +147,7 @@ render_header('給与計算', $user, 'payroll.php');
                 <td class="text-end">¥<?= number_format($sumOps) ?></td>
                 <td class="text-end">¥<?= number_format($sumTrans) ?></td>
                 <td class="text-end">¥<?= number_format($sumTotal) ?></td>
+                <td></td>
               </tr>
             <?php endif; ?>
           </tbody>

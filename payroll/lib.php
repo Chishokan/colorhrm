@@ -87,6 +87,7 @@ function nav_links_for($user) {
   $links = [];
   if ($role === 'teacher') {
     $links['shifts.php'] = 'シフト可能登録';
+    $links['payslips.php'] = '給与明細';
   }
   if ($role === 'admin' || $role === 'staff') {
     $links['index.php']        = 'ダッシュボード';
@@ -228,4 +229,113 @@ function compute_month_payroll($month) {
     ];
   }
   return $out;
+}
+
+// ------------------------------------------------------------
+// 給与明細（payslips）：発行スナップショット・PDF生成・通知メール
+// ------------------------------------------------------------
+// 通知メール等のリンク基点（payroll の app_base_url、無ければ実行URLから）
+function payroll_base_url() {
+  $u = config_value('app_base_url', '');
+  if ($u !== '') return rtrim($u, '/') . '/';
+  $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+  $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
+  $dir    = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
+  return $scheme . '://' . $host . $dir . '/';
+}
+
+// payslips テーブルの有無（未マイグレーションでも画面が落ちないように）
+function payslips_table_exists() {
+  static $ok = null;
+  if ($ok === null) {
+    try { db()->query("SELECT 1 FROM payslips LIMIT 1"); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+  }
+  return $ok;
+}
+
+// その月の明細を発行（発行時点の金額をスナップショット upsert）。
+//   $onlyStaffId 指定で個別発行。返り値: 発行した [['staff'=>, 'data'=>], ...]
+function issue_payslips($month, $issuedBy, $onlyStaffId = null) {
+  $rows = compute_month_payroll($month);
+  $up = db()->prepare(
+    "INSERT INTO payslips
+       (tenant_id,staff_id,month,days,class_min,ops_min,class_rate,ops_rate,class_pay,ops_pay,transport,total,issued_at,issued_by)
+     VALUES (1,?,?,?,?,?,?,?,?,?,?,?,NOW(),?)
+     ON DUPLICATE KEY UPDATE days=VALUES(days),class_min=VALUES(class_min),ops_min=VALUES(ops_min),
+       class_rate=VALUES(class_rate),ops_rate=VALUES(ops_rate),class_pay=VALUES(class_pay),ops_pay=VALUES(ops_pay),
+       transport=VALUES(transport),total=VALUES(total),issued_at=NOW(),issued_by=VALUES(issued_by)");
+  $issued = [];
+  foreach ($rows as $r) {
+    $sid = (int)$r['staff']['id'];
+    if ($onlyStaffId !== null && $sid !== (int)$onlyStaffId) continue;
+    // 一括時は給与対象外（use_payroll=0）を除外。個別時は明示操作なので発行する。
+    if ($onlyStaffId === null && array_key_exists('use_payroll', $r['staff']) && empty($r['staff']['use_payroll'])) continue;
+    $up->execute([$sid, $month, $r['days'], $r['class_min'], $r['ops_min'], $r['class_rate'], $r['ops_rate'],
+                  $r['class_pay'], $r['ops_pay'], $r['transport'], $r['total'], (int)$issuedBy]);
+    $issued[] = ['staff' => $r['staff'], 'data' => $r];
+  }
+  return $issued;
+}
+
+// 明細発行の通知メール（金額は本文に載せず、アプリでDL）。成功でtrue。
+function send_payslip_notice($toEmail, $toName, $month) {
+  $toEmail = trim((string)$toEmail);
+  if (!config_value('mail_enabled', true) || $toEmail === '') return false;
+  $from = trim((string)config_value('mail_from', ''));
+  if ($from === '') return false;
+  $fromName = config_value('mail_from_name', '給与・シフト');
+  $url = payroll_base_url() . 'payslips.php';
+  $subject = "【給与明細】{$month} 分を発行しました";
+  $body  = ($toName !== '' ? "{$toName} 様\n\n" : '')
+         . "{$month} 分の給与明細を発行しました。\n下記からログインして明細（PDF）をご確認ください。\n\n"
+         . "{$url}\n\n"
+         . "※ 金額はこのメールには記載していません（ログインしてご確認ください）。\n"
+         . "※ このメールは送信専用です。\n\n智翔館グループ 給与・シフト";
+  $prevLang = mb_language(); $prevEnc = mb_internal_encoding();
+  mb_language('uni'); mb_internal_encoding('UTF-8');
+  $headers  = 'From: ' . mb_encode_mimeheader($fromName) . " <{$from}>\r\nReply-To: {$from}\r\n";
+  $ok = @mb_send_mail($toEmail, $subject, $body, $headers, '-f' . $from);
+  mb_language($prevLang); mb_internal_encoding($prevEnc);
+  return (bool)$ok;
+}
+
+// 給与明細PDFを生成して文字列で返す（tFPDF＋IPAゴシック同梱）。
+function build_payslip_pdf($slip, $staffName) {
+  require_once __DIR__ . '/tfpdf/tfpdf.php';
+  require_once __DIR__ . '/tfpdf/font/unifont/ttfonts.php';
+  $pdf = new tFPDF('P', 'mm', 'A4');
+  $pdf->SetTitle('payslip');
+  $pdf->AddPage();
+  $pdf->AddFont('ipag', '', 'ipag.ttf', true);
+  // 見出し
+  $pdf->SetFont('ipag', '', 18);
+  $pdf->Cell(0, 12, '給 与 明 細 書', 0, 1, 'C');
+  $pdf->SetFont('ipag', '', 11);
+  $pdf->Cell(0, 7, '対象月： ' . $slip['month'], 0, 1, 'C');
+  $pdf->Ln(2);
+  $pdf->Cell(0, 8, '氏名： ' . $staffName . '　様', 0, 1);
+  $pdf->Cell(0, 8, '発行日： ' . substr((string)$slip['issued_at'], 0, 10) . '　／　智翔館グループ', 0, 1);
+  $pdf->Ln(2);
+  // 明細表
+  $pdf->SetFont('ipag', '', 11);
+  $w1 = 90; $w2 = 90;
+  $row = function ($label, $val, $bold = false) use ($pdf, $w1, $w2) {
+    $pdf->SetFont('ipag', '', $bold ? 13 : 11);
+    $pdf->Cell($w1, 9, $label, 1, 0, 'L');
+    $pdf->Cell($w2, 9, $val, 1, 1, 'R');
+  };
+  $fmt = function ($n) { return number_format((int)$n); };
+  $row('勤務日数', $fmt($slip['days']) . ' 日');
+  $row('授業時間 / 授業時給', fmt_hm($slip['class_min']) . ' / ' . $fmt($slip['class_rate']) . ' 円');
+  $row('運営時間 / 運営時給', fmt_hm($slip['ops_min']) . ' / ' . $fmt($slip['ops_rate']) . ' 円');
+  $pdf->Ln(1);
+  $row('授業給与', $fmt($slip['class_pay']) . ' 円');
+  $row('運営給与', $fmt($slip['ops_pay']) . ' 円');
+  $row('交通費', $fmt($slip['transport']) . ' 円');
+  $row('支給合計', $fmt($slip['total']) . ' 円', true);
+  $pdf->Ln(6);
+  $pdf->SetFont('ipag', '', 9);
+  $pdf->MultiCell(0, 5, '※ 本明細は発行時点の確定シフトに基づく金額です。ご不明点は管理者へお問い合わせください。');
+  return $pdf->Output('S');
 }
