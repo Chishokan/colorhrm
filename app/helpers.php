@@ -405,7 +405,11 @@ function render_header($title, $user, $active = '') {
   echo '<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">';
   echo '</head><body class="bg-light">';
   echo '<nav class="navbar navbar-dark bg-dark px-3">';
-  echo '<span class="navbar-brand">🎓 Color HRM</span>';
+  if (file_exists(__DIR__ . '/assets/mark.png')) {
+    echo '<span class="navbar-brand d-flex align-items-center"><img src="assets/mark.png" alt="" style="height:30px" class="me-2">Color HRM</span>';
+  } else {
+    echo '<span class="navbar-brand">🎓 Color HRM</span>';
+  }
   echo '<div class="ms-3 me-auto">';
   foreach ($links as $href => $label) {
     $cls = ($href === $active) ? 'btn btn-sm btn-light me-1' : 'btn btn-sm btn-outline-light me-1';
