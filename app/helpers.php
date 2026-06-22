@@ -23,6 +23,14 @@ function home_url_for($user) {
   return (($user['role'] ?? '') === 'teacher') ? 'mypage.php' : 'index.php';
 }
 
+// ロゴ画像URL（config で差し替え可。既定は智翔館WordPressのアップロード）
+function logo_url() {
+  return config_value('logo_url', 'https://chishokan.co.jp/wp/wp-content/uploads/2026/06/8532ffc6a3a5dcc6bbbf34f444229899.png');
+}
+function logo_mark_url() {
+  return config_value('logo_mark_url', 'https://chishokan.co.jp/wp/wp-content/uploads/2026/06/e92512132610dd098d357f2155bf891a.png');
+}
+
 // ------------------------------------------------------------
 // 教室（校舎）：マスター取得と複数値ヘルパー
 // ------------------------------------------------------------
@@ -405,8 +413,8 @@ function render_header($title, $user, $active = '') {
   echo '<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">';
   echo '</head><body class="bg-light">';
   echo '<nav class="navbar navbar-dark bg-dark px-3">';
-  if (file_exists(__DIR__ . '/assets/mark.png')) {
-    echo '<span class="navbar-brand d-flex align-items-center"><img src="assets/mark.png" alt="" style="height:30px" class="me-2">Color HRM</span>';
+  if (logo_mark_url() !== '') {
+    echo '<span class="navbar-brand d-flex align-items-center"><img src="' . h(logo_mark_url()) . '" alt="" style="height:30px" class="me-2">Color HRM</span>';
   } else {
     echo '<span class="navbar-brand">🎓 Color HRM</span>';
   }

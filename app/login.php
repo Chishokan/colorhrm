@@ -25,8 +25,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <div class="container" style="max-width:380px;margin-top:12vh">
     <div class="card shadow-sm">
       <div class="card-body p-4">
-        <?php if (file_exists(__DIR__ . '/assets/logo.png')): ?>
-          <img src="assets/logo.png" alt="智翔館" style="max-height:60px" class="mb-2">
+        <?php if (logo_url() !== ''): ?>
+          <img src="<?= h(logo_url()) ?>" alt="智翔館" style="max-height:64px" class="mb-2">
         <?php else: ?>
           <h4 class="mb-1">🎓 Color HRM</h4>
         <?php endif; ?>

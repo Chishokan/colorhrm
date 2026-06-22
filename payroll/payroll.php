@@ -11,36 +11,40 @@ $scope = scoped_staff_ids($user); // null=全員 / 配列=担当教室の講師I
 
 $month = valid_month($_GET['m'] ?? date('Y-m'));
 
-// 明細の発行・送信（POST）：issue_all=全員 / issue_one=個別
+// 明細の発行（PDF出力）とメール送信を分離（POST）
+//   issue_all/issue_one … 明細を発行（スナップショット作成）※メールは送らない
+//   notify_all/notify_one … 発行済み明細の通知メールを送信
 $flash = ''; $err = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['action'] ?? ''), ['issue_all', 'issue_one'], true)) {
+$_act = $_POST['action'] ?? '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_act, ['issue_all', 'issue_one', 'notify_all', 'notify_one'], true)) {
   csrf_check();
   if (!payslips_table_exists()) {
     $err = '給与明細テーブル（payslips）がありません。migrations/011_payslips.sql を実行してください。';
   } else {
-    $onlyId = ($_POST['action'] === 'issue_one') ? (int)($_POST['staff_id'] ?? 0) : null;
+    $onlyId = in_array($_act, ['issue_one', 'notify_one'], true) ? (int)($_POST['staff_id'] ?? 0) : null;
     if ($onlyId !== null && $scope !== null && !in_array($onlyId, $scope, true)) {
-      $err = '担当教室外の講師は発行できません。';
-      $issued = [];
-    } else {
+      $err = '担当教室外の講師は操作できません。';
+    } elseif (in_array($_act, ['issue_all', 'issue_one'], true)) {
+      // 発行のみ（メールなし）
       $issued = issue_payslips($month, (int)$user['id'], $onlyId, $scope);
-    $mailed = 0;
-    if ($issued) {
-      $ids = array_map(fn($it) => (int)$it['staff']['id'], $issued);
-      $in  = implode(',', array_fill(0, count($ids), '?'));
-      $em  = db()->prepare("SELECT id, name, email FROM staff WHERE id IN ($in)");
-      $em->execute($ids);
-      $byId = []; foreach ($em->fetchAll() as $s) { $byId[(int)$s['id']] = $s; }
-      $note = db()->prepare("UPDATE payslips SET notified_at=NOW() WHERE staff_id=? AND month=?");
-      foreach ($issued as $it) {
-        $sid = (int)$it['staff']['id']; $s = $byId[$sid] ?? null;
-        if ($s && trim((string)$s['email']) !== '' && send_payslip_notice($s['email'], $s['name'], $month)) {
-          $note->execute([$sid, $month]); $mailed++;
-        }
+      $flash = count($issued) . '件の明細を発行しました（PDF出力可・メールは未送信）。';
+    } else {
+      // メール送信のみ（発行済みが対象）
+      $where = "p.month=?"; $params = [$month];
+      if ($onlyId !== null) { $where .= " AND p.staff_id=?"; $params[] = $onlyId; }
+      elseif ($scope !== null) {
+        if ($scope) { $where .= " AND p.staff_id IN (" . implode(',', array_fill(0, count($scope), '?')) . ")"; $params = array_merge($params, $scope); }
+        else { $where .= " AND 1=0"; }
       }
-    }
-      $flash = count($issued) . '件の明細を発行しました'
-             . ($mailed ? "（{$mailed}件にメール通知）" : '（メール通知0件：メール未登録、またはメール未設定）') . '。';
+      $q = db()->prepare("SELECT p.staff_id, s.name, s.email FROM payslips p JOIN staff s ON s.id=p.staff_id WHERE $where");
+      $q->execute($params);
+      $note = db()->prepare("UPDATE payslips SET notified_at=NOW() WHERE staff_id=? AND month=?");
+      $mailed = 0; $noemail = 0;
+      foreach ($q->fetchAll() as $r) {
+        if (trim((string)$r['email']) === '') { $noemail++; continue; }
+        if (send_payslip_notice($r['email'], $r['name'], $month)) { $note->execute([(int)$r['staff_id'], $month]); $mailed++; }
+      }
+      $flash = "{$mailed}件にメール送信しました" . ($noemail ? "（メール未登録 {$noemail}件はスキップ）" : '') . '。';
     }
   }
 }
@@ -100,9 +104,13 @@ render_header('給与計算', $user, 'payroll.php');
         </div>
         <a class="btn btn-sm btn-success" href="?m=<?= h($month) ?>&export=csv">CSVダウンロード</a>
         <button type="button" class="btn btn-sm btn-outline-success" onclick="copyTsv()">コピー</button>
-        <form method="post" class="d-inline" onsubmit="return confirm('<?= h($month) ?> の給与明細を対象者全員に発行し、メール通知します。よろしいですか？');">
+        <form method="post" class="d-inline" onsubmit="return confirm('<?= h($month) ?> の給与明細を対象者全員に発行します（メールは送りません）。よろしいですか？');">
           <?= csrf_field() ?><input type="hidden" name="action" value="issue_all">
-          <button class="btn btn-sm btn-primary">全員に発行・送信</button>
+          <button class="btn btn-sm btn-primary">全員に発行</button>
+        </form>
+        <form method="post" class="d-inline" onsubmit="return confirm('<?= h($month) ?> の発行済み明細について、対象者全員にメール送信します。よろしいですか？');">
+          <?= csrf_field() ?><input type="hidden" name="action" value="notify_all">
+          <button class="btn btn-sm btn-outline-primary">全員にメール送信</button>
         </form>
       </div>
     </div>
@@ -138,9 +146,10 @@ render_header('給与計算', $user, 'payroll.php');
                   <?php if ($sl): ?>
                     <a href="payslip_pdf.php?id=<?= (int)$sl['id'] ?>" target="_blank" class="badge bg-success text-decoration-none">PDF</a>
                     <?php if (!empty($sl['notified_at'])): ?><span class="badge bg-info text-dark" title="<?= h($sl['notified_at']) ?>">通知済</span><?php endif; ?>
-                    <form method="post" class="d-inline"><?= csrf_field() ?><input type="hidden" name="action" value="issue_one"><input type="hidden" name="staff_id" value="<?= (int)$r['staff']['id'] ?>"><button class="btn btn-sm btn-link p-0">再発行</button></form>
+                    <form method="post" class="d-inline"><?= csrf_field() ?><input type="hidden" name="action" value="notify_one"><input type="hidden" name="staff_id" value="<?= (int)$r['staff']['id'] ?>"><button class="btn btn-sm btn-link p-0">メール送信</button></form>
+                    <form method="post" class="d-inline"><?= csrf_field() ?><input type="hidden" name="action" value="issue_one"><input type="hidden" name="staff_id" value="<?= (int)$r['staff']['id'] ?>"><button class="btn btn-sm btn-link p-0 text-muted">再発行</button></form>
                   <?php else: ?>
-                    <form method="post" class="d-inline"><?= csrf_field() ?><input type="hidden" name="action" value="issue_one"><input type="hidden" name="staff_id" value="<?= (int)$r['staff']['id'] ?>"><button class="btn btn-sm btn-outline-primary">発行・送信</button></form>
+                    <form method="post" class="d-inline"><?= csrf_field() ?><input type="hidden" name="action" value="issue_one"><input type="hidden" name="staff_id" value="<?= (int)$r['staff']['id'] ?>"><button class="btn btn-sm btn-outline-primary">発行</button></form>
                   <?php endif; ?>
                 </td>
               </tr>
