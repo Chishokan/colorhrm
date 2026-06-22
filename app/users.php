@@ -44,6 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           $cols[] = 'classrooms';
           $vals[] = implode(',', array_values(array_filter(array_map('trim', (array)($_POST['classroom'] ?? [])), fn($v) => $v !== '')));
         }
+        if (isset(users_columns()['plain_password'])) { $cols[] = 'plain_password'; $vals[] = $pw; }
         $ph = implode(',', array_fill(0, count($cols), '?'));
         db()->prepare("INSERT INTO users (" . implode(',', $cols) . ") VALUES ($ph)")->execute($vals);
         $sent  = send_account_email($email, $display, $email, $pw, false);
@@ -80,6 +81,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
       db()->prepare("UPDATE users SET password_hash = ? WHERE id = ?")
           ->execute([password_hash($pw, PASSWORD_DEFAULT), $id]);
+      if (isset(users_columns()['plain_password'])) {
+        db()->prepare("UPDATE users SET plain_password = ? WHERE id = ?")->execute([$pw, $id]);
+      }
       $row = db()->prepare("SELECT email, display_name FROM users WHERE id = ?");
       $row->execute([$id]);
       $tgt  = $row->fetch();

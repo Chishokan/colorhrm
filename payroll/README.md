@@ -15,6 +15,7 @@ URL は `https://chishokan.co.jp/colorhrm-pay/`。
 | `lib.php` | 給与アプリ用レイアウト・ナビ・CSRF・カラー/時給ヘルパー |
 | `index.php` | ダッシュボード（admin/staff）。講師別の時給一覧＋各機能入口 |
 | `shifts.php` | シフト可能登録（teacher）。月間表で1日=1区分を一括登録（当月〜6か月先・上をコピー）・確定状況確認 |
+| `punch.php` | 打刻（teacher）。配属教室から出勤/退勤教室を選んで打刻。確定シフトと比較し遅刻/早退/欠勤を判定 |
 | `shifts_matrix.php` | シフト表（admin/staff）。教室ごとに「1日〜月末 × 講師」で申請/確定シフトを一覧 |
 | `shifts_admin.php` | シフト管理（admin/staff）。申請の個別/月間まとめて確定（授業分入力）・確定シフトの追加/編集/削除。staffは担当教室の講師のみ |
 | `payroll.php` | 給与計算・振込一覧（admin/staff）。確定シフト×時給表で月次集計＋CSV/コピー＋明細の発行/送信 |
