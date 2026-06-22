@@ -1,6 +1,7 @@
 <?php
 // 給与・シフトアプリ 共通ヘルパー / レイアウト / CSRF。
 // 前提：auth.php を先に require（session_start / current_user / h / db）。
+date_default_timezone_set('Asia/Tokyo'); // 打刻・当月判定を日本時間で
 
 // ------------------------------------------------------------
 // 設定（config.php）
@@ -94,6 +95,7 @@ function nav_links_for($user) {
   $role  = $user['role'] ?? '';
   $links = [];
   if ($role === 'teacher') {
+    $links['punch.php'] = '打刻';
     $links['shifts.php'] = 'シフト可能登録';
     $links['payslips.php'] = '給与明細';
   }
@@ -396,4 +398,31 @@ function scoped_staff_ids($user) {
   if (!$mine) return [];
   $ids = staff_ids_in_classrooms($mine);
   return $ids === null ? null : $ids;
+}
+
+// ------------------------------------------------------------
+// 打刻（attendance）
+// ------------------------------------------------------------
+function attendance_table_exists() {
+  static $ok = null;
+  if ($ok === null) {
+    try { db()->query("SELECT 1 FROM attendance LIMIT 1"); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+  }
+  return $ok;
+}
+// 確定シフト(開始/終了)と打刻から 遅刻/早退/欠勤 を判定（猶予なし＝厳密）。
+//   返り値: ['欠勤'] / ['遅刻'] / ['遅刻','早退'] / []（正常）
+function attendance_flags($shiftStart, $shiftEnd, $att, $workDate) {
+  $flags = [];
+  $today = date('Y-m-d');
+  $in  = $att['clock_in']  ?? null;
+  $out = $att['clock_out'] ?? null;
+  if (empty($in)) {
+    if ($workDate <= $today) { $flags[] = '欠勤'; }
+    return $flags;
+  }
+  if ($in > $shiftStart)  { $flags[] = '遅刻'; }     // TIME文字列比較（同日内）
+  if (!empty($out) && $out < $shiftEnd) { $flags[] = '早退'; }
+  return $flags;
 }

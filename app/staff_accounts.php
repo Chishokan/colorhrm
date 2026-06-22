@@ -39,8 +39,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     $st->execute($ids);
     $targets = $st->fetchAll();
 
-    $ins = db()->prepare("INSERT INTO users (email, password_hash, role, staff_id, display_name, is_active)
-                          VALUES (?, ?, 'teacher', ?, ?, 1)");
+    $hasPlain = isset(users_columns()['plain_password']);
+    $ins = $hasPlain
+      ? db()->prepare("INSERT INTO users (email, password_hash, role, staff_id, display_name, is_active, plain_password) VALUES (?, ?, 'teacher', ?, ?, 1, ?)")
+      : db()->prepare("INSERT INTO users (email, password_hash, role, staff_id, display_name, is_active) VALUES (?, ?, 'teacher', ?, ?, 1)");
     db()->beginTransaction();
     try {
       foreach ($targets as $s) {
@@ -48,7 +50,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
         if ($email === '') { $skipped[] = $s['name'] . '（メール未登録）'; continue; }
         if (isset($usedEmails[strtolower($email)])) { $skipped[] = $s['name'] . '（メール重複）'; continue; }
         $pw = gen_initial_password();
-        $ins->execute([$email, password_hash($pw, PASSWORD_DEFAULT), (int)$s['id'], $s['name']]);
+        $args = [$email, password_hash($pw, PASSWORD_DEFAULT), (int)$s['id'], $s['name']];
+        if ($hasPlain) { $args[] = $pw; }
+        $ins->execute($args);
         $usedEmails[strtolower($email)] = 1;
         $created[] = ['name' => $s['name'], 'email' => $email, 'password' => $pw];
       }

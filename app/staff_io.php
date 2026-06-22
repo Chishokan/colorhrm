@@ -13,14 +13,27 @@ $cols = staff_columns();
 // ---- エクスポート（実在カラムのみ出力） ----
 if (isset($_GET['export'])) {
   $out = array_values(array_filter(staff_export_columns(), fn($c) => isset($cols[$c])));
+  // 末尾にログイン情報（admin専用エクスポートにのみ出力）。
+  $uCols = users_columns();
+  $hasPlain = isset($uCols['plain_password']);
+  $loginMap = []; // staff_id => [email, plain_password]
+  foreach (db()->query("SELECT staff_id, email" . ($hasPlain ? ", plain_password" : "") . " FROM users WHERE staff_id IS NOT NULL")->fetchAll() as $u) {
+    $loginMap[(int)$u['staff_id']] = $u;
+  }
+  $extra = ['login_email'];
+  if ($hasPlain) { $extra[] = 'login_password'; }
+
   header('Content-Type: text/csv; charset=UTF-8');
   header('Content-Disposition: attachment; filename="staff_' . date('Ymd') . '.csv"');
   echo "\xEF\xBB\xBF";
   $fh = fopen('php://output', 'w');
-  fputcsv($fh, $out);
+  fputcsv($fh, array_merge($out, $extra));
   foreach (db()->query("SELECT * FROM staff WHERE tenant_id = 1 ORDER BY name")->fetchAll() as $s) {
     $line = [];
     foreach ($out as $c) { $line[] = (string)($s[$c] ?? ''); }
+    $u = $loginMap[(int)$s['id']] ?? null;
+    $line[] = $u['email'] ?? '';
+    if ($hasPlain) { $line[] = $u['plain_password'] ?? ''; }
     fputcsv($fh, $line);
   }
   fclose($fh);

@@ -125,6 +125,21 @@ $days = db()->prepare("SELECT * FROM shift_days WHERE DATE_FORMAT(work_date,'%Y-
 $days->execute(array_merge([$month], $scopeParams));
 $days = $days->fetchAll();
 
+// 打刻（入退室）を [staff_id|date] で引けるように
+$attBy = [];
+if (attendance_table_exists()) {
+  $aa = db()->prepare("SELECT * FROM attendance WHERE DATE_FORMAT(work_date,'%Y-%m')=?" . $scopeSql);
+  $aa->execute(array_merge([$month], $scopeParams));
+  foreach ($aa->fetchAll() as $r) { $attBy[$r['staff_id'] . '|' . $r['work_date']] = $r; }
+}
+function admin_flag_badges($flags) {
+  if (!$flags) return '<span class="badge bg-success">OK</span>';
+  $map = ['遅刻' => 'bg-danger', '早退' => 'bg-danger', '欠勤' => 'bg-dark'];
+  $h = '';
+  foreach ($flags as $f) { $h .= '<span class="badge ' . ($map[$f] ?? 'bg-secondary') . ' me-1">' . h($f) . '</span>'; }
+  return $h;
+}
+
 render_header('シフト管理', $user, 'shifts_admin.php');
 ?>
   <div class="container py-4">
@@ -201,9 +216,11 @@ render_header('シフト管理', $user, 'shifts_admin.php');
       <div class="card-header">確定シフト（<?= h($month) ?>）</div>
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
-          <thead class="table-light"><tr><th>講師</th><th>日付</th><th style="width:110px">開始</th><th style="width:110px">終了</th><th class="text-end">稼働</th><th style="width:110px">授業(分)</th><th class="text-end">運営</th><th></th></tr></thead>
+          <thead class="table-light"><tr><th>講師</th><th>日付</th><th style="width:104px">開始</th><th style="width:104px">終了</th><th class="text-end">稼働</th><th style="width:104px">授業(分)</th><th class="text-end">運営</th><th>出勤</th><th>退勤</th><th>判定</th><th></th></tr></thead>
           <tbody>
-            <?php foreach ($days as $d): $tot=shift_minutes($d['start_time'],$d['end_time']); $cls=min((int)$d['class_minutes'],$tot); ?>
+            <?php foreach ($days as $d): $tot=shift_minutes($d['start_time'],$d['end_time']); $cls=min((int)$d['class_minutes'],$tot);
+              $att = $attBy[$d['staff_id'].'|'.$d['work_date']] ?? null;
+              $flags = attendance_flags($d['start_time'], $d['end_time'], $att, $d['work_date']); ?>
               <tr>
                 <td><?= h($names[(int)$d['staff_id']] ?? ('#'.$d['staff_id'])) ?></td>
                 <td><?= h($d['work_date']) ?></td>
@@ -213,13 +230,16 @@ render_header('シフト管理', $user, 'shifts_admin.php');
                 <td class="text-end"><?= h(fmt_hm($tot)) ?></td>
                 <td><input form="ud<?= (int)$d['id'] ?>" type="number" name="class_minutes" value="<?= (int)$d['class_minutes'] ?>" min="0" max="<?= $tot ?>" class="form-control form-control-sm"></td>
                 <td class="text-end"><?= h(fmt_hm($tot - $cls)) ?></td>
+                <td class="small"><?= $att && !empty($att['clock_in']) ? h(hm($att['clock_in'])).'<br><span class="text-muted">'.h($att['in_room']).'</span>' : '—' ?></td>
+                <td class="small"><?= $att && !empty($att['clock_out']) ? h(hm($att['clock_out'])).'<br><span class="text-muted">'.h($att['out_room']).'</span>' : '—' ?></td>
+                <td><?= admin_flag_badges($flags) ?></td>
                 <td class="text-end text-nowrap">
                   <button form="ud<?= (int)$d['id'] ?>" class="btn btn-sm btn-outline-primary">保存</button>
                   <form method="post" class="d-inline" onsubmit="return confirm('削除しますか？');"><?= csrf_field() ?><input type="hidden" name="action" value="delete_day"><input type="hidden" name="id" value="<?= (int)$d['id'] ?>"><button class="btn btn-sm btn-link text-danger p-0">削除</button></form>
                 </td>
               </tr>
             <?php endforeach; ?>
-            <?php if (!$days): ?><tr><td colspan="8" class="text-center text-muted py-3">確定シフトはありません。</td></tr><?php endif; ?>
+            <?php if (!$days): ?><tr><td colspan="11" class="text-center text-muted py-3">確定シフトはありません。</td></tr><?php endif; ?>
           </tbody>
         </table>
       </div>
