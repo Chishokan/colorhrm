@@ -71,7 +71,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $cr = implode(',', array_values(array_filter(array_map('trim', (array)($_POST['classroom'] ?? [])), fn($v) => $v !== '')));
       db()->prepare("UPDATE users SET classrooms = ? WHERE id = ?")->execute([$cr, $id]);
     }
-    $flash = 'ユーザー情報を更新しました。';
+    // メール・表示名の編集
+    $email   = trim($_POST['email'] ?? '');
+    $display = trim($_POST['display_name'] ?? '');
+    if ($email === '') {
+      $err = 'メールアドレスは必須です（他の項目は更新しました）。';
+    } else {
+      $chk = db()->prepare("SELECT id FROM users WHERE email = ? AND id <> ? LIMIT 1");
+      $chk->execute([$email, $id]);
+      if ($chk->fetch()) {
+        $err = 'そのメールアドレスは別のユーザーが使用中です（他の項目は更新しました）。';
+      } else {
+        db()->prepare("UPDATE users SET email = ?, display_name = ? WHERE id = ?")->execute([$email, $display, $id]);
+      }
+    }
+    if ($err === '') { $flash = 'ユーザー情報を更新しました。'; }
 
   } elseif ($action === 'reset_pw') {
     $id = (int)($_POST['id'] ?? 0);
@@ -179,6 +193,12 @@ render_header('ユーザー管理', $user, 'users.php');
                   <?= csrf_field() ?>
                   <input type="hidden" name="action" value="update">
                   <input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
+                  <div class="col-auto">
+                    <input name="email" type="email" value="<?= h($u['email']) ?>" class="form-control form-control-sm" placeholder="メール" style="min-width:190px" required>
+                  </div>
+                  <div class="col-auto">
+                    <input name="display_name" value="<?= h($u['display_name']) ?>" class="form-control form-control-sm" placeholder="表示名" style="min-width:120px">
+                  </div>
                   <div class="col-auto">
                     <select name="role" class="form-select form-select-sm">
                       <?php foreach ($roles as $r): ?>
