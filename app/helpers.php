@@ -404,36 +404,82 @@ function nav_links_for($user) {
   return $links;
 }
 
+// サイドメニューのグループ構成（左サイドバー用）
+function nav_groups_for($user) {
+  $role = $user['role'] ?? '';
+  $g = [];
+  if ($role === 'teacher') {
+    $items = ['mypage.php' => 'マイページ'];
+    if (can_view_staff_list($user)) { $items['index.php'] = '講師一覧'; }
+    $g[] = ['label' => '', 'items' => $items];
+    return $g;
+  }
+  if ($role === 'admin' || $role === 'staff') {
+    if (can_view_recruitment($user)) {
+      $rec = ['dashboard.php' => 'ダッシュボード', 'candidates.php' => '採用'];
+      if ($role === 'admin') { $rec['import.php'] = 'データ移行'; }
+      $g[] = ['label' => '採用', 'items' => $rec];
+    }
+    $g[] = ['label' => '育成', 'items' => ['index.php' => '講師一覧', 'training.php' => '研修管理']];
+    if ($role === 'admin') {
+      $g[] = ['label' => 'コンテンツ・マスター', 'items' => [
+        'training_master.php' => '研修マスター',
+        'lessons.php'         => '研修動画',
+        'questions.php'       => '質問',
+        'classrooms.php'      => '教室マスター',
+      ]];
+      $g[] = ['label' => '管理', 'items' => ['users.php' => 'ユーザー管理']];
+    }
+  }
+  return $g;
+}
+
 function render_header($title, $user, $active = '') {
-  $role  = $user['role'] ?? '';
-  $links = nav_links_for($user);
+  $role    = $user['role'] ?? '';
+  $groups  = nav_groups_for($user);
+  $payroll = config_value('payroll_url', '/colorhrm-pay/');
+  $uname   = ($user['display_name'] ?? '') ?: ($user['email'] ?? '');
   echo '<!doctype html><html lang="ja"><head><meta charset="utf-8">';
   echo '<meta name="viewport" content="width=device-width, initial-scale=1">';
   echo '<title>' . h($title) . '</title>';
   echo '<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">';
+  echo '<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" defer></script>';
+  echo '<style>@media(min-width:992px){.chrm-sidebar{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto}}</style>';
   echo '</head><body class="bg-light">';
+  // 上部バー
   echo '<nav class="navbar navbar-dark bg-dark px-3">';
+  echo '<button class="navbar-toggler d-lg-none border-0 me-2 p-1" type="button" data-bs-toggle="offcanvas" data-bs-target="#chrmSidebar" aria-label="メニュー"><span class="navbar-toggler-icon"></span></button>';
   if (logo_mark_url() !== '') {
-    echo '<span class="navbar-brand d-flex align-items-center"><img src="' . h(logo_mark_url()) . '" alt="" style="height:30px" class="me-2">Color HRM</span>';
+    echo '<span class="navbar-brand d-flex align-items-center mb-0"><img src="' . h(logo_mark_url()) . '" alt="" style="height:28px" class="me-2">Color HRM</span>';
   } else {
-    echo '<span class="navbar-brand">🎓 Color HRM</span>';
+    echo '<span class="navbar-brand mb-0">🎓 Color HRM</span>';
   }
-  echo '<div class="ms-3 me-auto">';
-  foreach ($links as $href => $label) {
-    $cls = ($href === $active) ? 'btn btn-sm btn-light me-1' : 'btn btn-sm btn-outline-light me-1';
-    echo '<a href="' . h($href) . '" class="' . $cls . '">' . h($label) . '</a>';
-  }
-  $payroll = config_value('payroll_url', '/colorhrm-pay/');
-  echo '<a href="' . h($payroll) . '" class="btn btn-sm btn-outline-light me-1">💴 給与・シフト</a>';
-  echo '</div>';
-  echo '<span class="text-white-50 me-3 small">'
-     . h($user['display_name'] ?: $user['email']) . '（' . h($role) . '）</span>';
+  echo '<div class="ms-auto d-flex align-items-center gap-2">';
+  echo '<a href="' . h($payroll) . '" class="btn btn-sm btn-outline-light">💴 給与・シフト</a>';
+  echo '<span class="text-white-50 small d-none d-sm-inline">' . h($uname) . '（' . h($role) . '）</span>';
   echo '<a href="logout.php" class="btn btn-sm btn-outline-light">ログアウト</a>';
-  echo '</nav>';
+  echo '</div></nav>';
+  // 本体（左サイドバー＋メイン）
+  echo '<div class="d-flex">';
+  echo '<div class="offcanvas-lg offcanvas-start bg-white border-end chrm-sidebar" tabindex="-1" id="chrmSidebar" style="width:230px">';
+  echo '<div class="offcanvas-header d-lg-none"><span class="fw-bold">メニュー</span><button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#chrmSidebar"></button></div>';
+  echo '<div class="offcanvas-body d-block p-2">';
+  echo '<ul class="nav nav-pills flex-column mb-0">';
+  foreach ($groups as $grp) {
+    if (!empty($grp['label'])) {
+      echo '<li class="nav-item mt-2 mb-1"><span class="text-muted small fw-bold px-2">' . h($grp['label']) . '</span></li>';
+    }
+    foreach ($grp['items'] as $href => $label) {
+      $act = ($href === $active) ? ' active' : '';
+      echo '<li class="nav-item"><a class="nav-link py-1' . $act . '" href="' . h($href) . '">' . h($label) . '</a></li>';
+    }
+  }
+  echo '</ul></div></div>';
+  echo '<main class="flex-grow-1" style="min-width:0">';
 }
 
 function render_footer() {
-  echo '</body></html>';
+  echo '</main></div></body></html>';
 }
 
 // ------------------------------------------------------------
