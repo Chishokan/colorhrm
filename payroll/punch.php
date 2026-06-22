@@ -109,7 +109,7 @@ render_header('打刻', $user, 'punch.php');
         <?php if (!$todayShift): ?>
           <p class="text-muted mb-0">本日は確定シフトがありません。打刻が必要な場合は管理者にご確認ください。</p>
         <?php else: ?>
-          <p class="small text-muted mb-2">本日のシフト：<strong><?= h(hm($todayShift['start_time'])) ?>〜<?= h(hm($todayShift['end_time'])) ?></strong></p>
+          <p class="small text-muted mb-2">本日のシフト：<strong><?= h(hm($todayShift['start_time'])) ?>〜<?= h(hm($todayShift['end_time'])) ?></strong><?php if (!empty($todayShift['room'])): ?> <span class="badge bg-secondary"><?= h($todayShift['room']) ?></span><?php endif; ?></p>
           <div class="row g-3">
             <div class="col-md-6">
               <div class="border rounded p-3">
@@ -164,18 +164,19 @@ render_header('打刻', $user, 'punch.php');
       </div>
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
-          <thead class="table-light"><tr><th>日付</th><th>シフト</th><th>出勤</th><th>退勤</th><th>判定</th></tr></thead>
+          <thead class="table-light"><tr><th>日付</th><th>教室</th><th>シフト</th><th>出勤</th><th>退勤</th><th>判定</th></tr></thead>
           <tbody>
             <?php foreach ($mShifts as $sd): $att = $attByDate[$sd['work_date']] ?? null; $flags = attendance_flags($sd['start_time'], $sd['end_time'], $att, $sd['work_date']); ?>
               <tr>
                 <td><?= h($sd['work_date']) ?></td>
+                <td class="small"><?= h($sd['room'] ?? '') ?: '—' ?></td>
                 <td class="small"><?= h(hm($sd['start_time'])) ?>〜<?= h(hm($sd['end_time'])) ?></td>
                 <td class="small"><?= $att && !empty($att['clock_in']) ? h(hm($att['clock_in'])) . '（' . h($att['in_room']) . '）' : '—' ?></td>
                 <td class="small"><?= $att && !empty($att['clock_out']) ? h(hm($att['clock_out'])) . '（' . h($att['out_room']) . '）' : '—' ?></td>
                 <td><?= flag_badges($flags) ?></td>
               </tr>
             <?php endforeach; ?>
-            <?php if (!$mShifts): ?><tr><td colspan="5" class="text-center text-muted py-3">この月の確定シフトはありません。</td></tr><?php endif; ?>
+            <?php if (!$mShifts): ?><tr><td colspan="6" class="text-center text-muted py-3">この月の確定シフトはありません。</td></tr><?php endif; ?>
           </tbody>
         </table>
       </div>

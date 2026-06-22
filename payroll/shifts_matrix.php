@@ -35,7 +35,7 @@ if ($tids) {
                         WHERE DATE_FORMAT(work_date,'%Y-%m')=? AND staff_id IN ($in)");
   $qa->execute(array_merge([$month], $tids));
   foreach ($qa->fetchAll() as $r) { $appBy[(int)$r['staff_id']][$r['work_date']] = $r; }
-  $qd = db()->prepare("SELECT staff_id, work_date, start_time, end_time FROM shift_days
+  $qd = db()->prepare("SELECT * FROM shift_days
                         WHERE DATE_FORMAT(work_date,'%Y-%m')=? AND staff_id IN ($in)");
   $qd->execute(array_merge([$month], $tids));
   foreach ($qd->fetchAll() as $r) { $dayBy[(int)$r['staff_id']][$r['work_date']] = $r; }
@@ -91,10 +91,16 @@ render_header('シフト表', $user, 'shifts_matrix.php');
                   </th>
                   <?php foreach ($teachers as $tid => $name): ?>
                     <?php
+                      // 確定はその教室のみ（room未設定の旧データは全教室に表示）。申請中は配属の全教室に表示。
                       $cell = ''; $cls = '';
-                      if (isset($dayBy[$tid][$date])) {
-                        $r = $dayBy[$tid][$date]; $cell = hm($r['start_time']) . '-' . hm($r['end_time']); $cls = 'bg-success text-white';
-                      } elseif (isset($appBy[$tid][$date]) && $appBy[$tid][$date]['status'] === '申請中') {
+                      $day = $dayBy[$tid][$date] ?? null;
+                      if ($day) {
+                        $rm = $day['room'] ?? '';
+                        if ($rm === '' || $rm === $room) {
+                          $cell = hm($day['start_time']) . '-' . hm($day['end_time']); $cls = 'bg-success text-white';
+                        }
+                      }
+                      if ($cell === '' && isset($appBy[$tid][$date]) && $appBy[$tid][$date]['status'] === '申請中') {
                         $r = $appBy[$tid][$date]; $cell = hm($r['start_time']) . '-' . hm($r['end_time']); $cls = 'bg-warning';
                       }
                     ?>
