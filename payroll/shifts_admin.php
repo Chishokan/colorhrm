@@ -11,6 +11,15 @@ $staffCols = [];
 foreach (db()->query("SHOW COLUMNS FROM staff")->fetchAll() as $c) { $staffCols[$c['Field']] = true; }
 $hasIsActive = isset($staffCols['is_active']);
 
+// 担当教室スコープ：admin=全員(null) / staff=担当教室の講師IDのみ
+$scope   = scoped_staff_ids($user);
+$inScope = fn($sid) => $scope === null || in_array((int)$sid, $scope, true);
+$scopeSql = ''; $scopeParams = [];
+if (is_array($scope)) {
+  if ($scope) { $scopeSql = ' AND staff_id IN (' . implode(',', array_fill(0, count($scope), '?')) . ')'; $scopeParams = $scope; }
+  else { $scopeSql = ' AND 1=0'; }
+}
+
 $flash = ''; $err = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check();
@@ -21,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $a = db()->prepare("SELECT * FROM shift_applications WHERE id=? AND status='申請中'");
     $a->execute([$appId]);
     $a = $a->fetch();
-    if ($a) {
+    if ($a && $inScope($a['staff_id'])) {
       $tot = shift_minutes($a['start_time'], $a['end_time']);
       if ($cls > $tot) $cls = $tot;
       db()->prepare("INSERT INTO shift_days (tenant_id,staff_id,work_date,start_time,end_time,class_minutes,note,application_id) VALUES (1,?,?,?,?,?,?,?)")
@@ -30,13 +39,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $flash = 'シフトを確定しました。';
     }
   } elseif ($action === 'reject') {
-    db()->prepare("UPDATE shift_applications SET status='却下' WHERE id=? AND status='申請中'")->execute([(int)($_POST['id'] ?? 0)]);
-    $flash = '申請を却下しました。';
+    $rid = (int)($_POST['id'] ?? 0);
+    $rs = db()->prepare("SELECT staff_id FROM shift_applications WHERE id=? AND status='申請中'");
+    $rs->execute([$rid]); $rsid = $rs->fetchColumn();
+    if ($rsid !== false && $inScope($rsid)) {
+      db()->prepare("UPDATE shift_applications SET status='却下' WHERE id=?")->execute([$rid]);
+      $flash = '申請を却下しました。';
+    }
   } elseif ($action === 'confirm_month') {
     // その月の申請中をまとめて確定シフト化（授業分は0で確定、後から各行で入力）
     $m = valid_month($_POST['month'] ?? '');
-    $list = db()->prepare("SELECT * FROM shift_applications WHERE status='申請中' AND DATE_FORMAT(work_date,'%Y-%m')=?");
-    $list->execute([$m]);
+    $list = db()->prepare("SELECT * FROM shift_applications WHERE status='申請中' AND DATE_FORMAT(work_date,'%Y-%m')=?" . $scopeSql);
+    $list->execute(array_merge([$m], $scopeParams));
     $rows = $list->fetchAll();
     db()->beginTransaction();
     try {
@@ -44,6 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $upd = db()->prepare("UPDATE shift_applications SET status='確定' WHERE id=?");
       $n = 0;
       foreach ($rows as $a) {
+        if (!$inScope($a['staff_id'])) continue;
         $ins->execute([$a['staff_id'], $a['work_date'], $a['start_time'], $a['end_time'], 0, $a['note'], $a['id']]);
         $upd->execute([$a['id']]);
         $n++;
@@ -61,7 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $et  = trim($_POST['end_time'] ?? '');
     $cls = max(0, (int)($_POST['class_minutes'] ?? 0));
     $note= trim($_POST['note'] ?? '');
-    if ($sid <= 0 || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) || shift_minutes($st, $et) <= 0) {
+    if ($sid <= 0 || !$inScope($sid) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) || shift_minutes($st, $et) <= 0) {
       $err = '講師・日付・開始/終了（終了は開始より後）を正しく入力してください。';
     } else {
       $tot = shift_minutes($st, $et); if ($cls > $tot) $cls = $tot;
@@ -74,14 +89,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $st  = trim($_POST['start_time'] ?? '');
     $et  = trim($_POST['end_time'] ?? '');
     $cls = max(0, (int)($_POST['class_minutes'] ?? 0));
-    if (shift_minutes($st, $et) > 0) {
+    $os = db()->prepare("SELECT staff_id FROM shift_days WHERE id=?"); $os->execute([$id]); $osid = $os->fetchColumn();
+    if ($osid !== false && $inScope($osid) && shift_minutes($st, $et) > 0) {
       $tot = shift_minutes($st, $et); if ($cls > $tot) $cls = $tot;
       db()->prepare("UPDATE shift_days SET start_time=?, end_time=?, class_minutes=? WHERE id=?")->execute([$st, $et, $cls, $id]);
       $flash = '確定シフトを更新しました。';
-    } else { $err = '終了は開始より後にしてください。'; }
+    } else { $err = '終了は開始より後、または権限のあるシフトを指定してください。'; }
   } elseif ($action === 'delete_day') {
-    db()->prepare("DELETE FROM shift_days WHERE id=?")->execute([(int)($_POST['id'] ?? 0)]);
-    $flash = '確定シフトを削除しました。';
+    $id = (int)($_POST['id'] ?? 0);
+    $os = db()->prepare("SELECT staff_id FROM shift_days WHERE id=?"); $os->execute([$id]); $osid = $os->fetchColumn();
+    if ($osid !== false && $inScope($osid)) {
+      db()->prepare("DELETE FROM shift_days WHERE id=?")->execute([$id]);
+      $flash = '確定シフトを削除しました。';
+    }
   }
 }
 
@@ -93,15 +113,16 @@ $next  = date('Y-m', strtotime($month . '-01 +1 month'));
 $names = [];
 foreach (db()->query("SELECT id, name FROM staff")->fetchAll() as $s) { $names[(int)$s['id']] = $s['name']; }
 $staffOpts = db()->query("SELECT id, name FROM staff" . ($hasIsActive ? " WHERE is_active=1" : "") . " ORDER BY name")->fetchAll();
+if ($scope !== null) { $staffOpts = array_values(array_filter($staffOpts, fn($s) => in_array((int)$s['id'], $scope, true))); }
 
-// 申請中
-$pending = db()->prepare("SELECT * FROM shift_applications WHERE status='申請中' AND DATE_FORMAT(work_date,'%Y-%m')=? ORDER BY work_date, start_time");
-$pending->execute([$month]);
+// 申請中（担当教室スコープ）
+$pending = db()->prepare("SELECT * FROM shift_applications WHERE status='申請中' AND DATE_FORMAT(work_date,'%Y-%m')=?" . $scopeSql . " ORDER BY work_date, start_time");
+$pending->execute(array_merge([$month], $scopeParams));
 $pending = $pending->fetchAll();
 
-// 確定シフト
-$days = db()->prepare("SELECT * FROM shift_days WHERE DATE_FORMAT(work_date,'%Y-%m')=? ORDER BY work_date, staff_id, start_time");
-$days->execute([$month]);
+// 確定シフト（担当教室スコープ）
+$days = db()->prepare("SELECT * FROM shift_days WHERE DATE_FORMAT(work_date,'%Y-%m')=?" . $scopeSql . " ORDER BY work_date, staff_id, start_time");
+$days->execute(array_merge([$month], $scopeParams));
 $days = $days->fetchAll();
 
 render_header('シフト管理', $user, 'shifts_admin.php');

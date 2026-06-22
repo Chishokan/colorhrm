@@ -7,6 +7,7 @@ require __DIR__ . '/lib.php';
 require_login();
 require_role(['admin', 'staff']);
 $user = current_user();
+$scope = scoped_staff_ids($user); // null=全員 / 配列=担当教室の講師ID
 
 $month = valid_month($_GET['m'] ?? date('Y-m'));
 
@@ -18,7 +19,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['action'] ?? ''), 
     $err = '給与明細テーブル（payslips）がありません。migrations/011_payslips.sql を実行してください。';
   } else {
     $onlyId = ($_POST['action'] === 'issue_one') ? (int)($_POST['staff_id'] ?? 0) : null;
-    $issued = issue_payslips($month, (int)$user['id'], $onlyId);
+    if ($onlyId !== null && $scope !== null && !in_array($onlyId, $scope, true)) {
+      $err = '担当教室外の講師は発行できません。';
+      $issued = [];
+    } else {
+      $issued = issue_payslips($month, (int)$user['id'], $onlyId, $scope);
     $mailed = 0;
     if ($issued) {
       $ids = array_map(fn($it) => (int)$it['staff']['id'], $issued);
@@ -34,12 +39,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['action'] ?? ''), 
         }
       }
     }
-    $flash = count($issued) . '件の明細を発行しました'
-           . ($mailed ? "（{$mailed}件にメール通知）" : '（メール通知0件：メール未登録、またはメール未設定）') . '。';
+      $flash = count($issued) . '件の明細を発行しました'
+             . ($mailed ? "（{$mailed}件にメール通知）" : '（メール通知0件：メール未登録、またはメール未設定）') . '。';
+    }
   }
 }
 
 $rows  = compute_month_payroll($month);
+if ($scope !== null) { $rows = array_values(array_filter($rows, fn($r) => in_array((int)$r['staff']['id'], $scope, true))); }
 
 // 発行済み明細（月内）を staff_id で引けるように
 $slipBy = [];
