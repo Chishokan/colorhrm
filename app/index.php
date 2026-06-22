@@ -12,17 +12,23 @@ $ms = round((microtime(true) - $t0) * 1000, 1);
 render_header('Color HRM 講師一覧', $user, 'index.php');
 ?>
   <div class="container py-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <h2 class="mb-0">講師一覧（<?= count($rows) ?>名）</h2>
-      <div class="d-flex align-items-center gap-2">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+      <h2 class="mb-0">講師一覧（<?= count($rows) ?>名）
+        <span class="badge bg-light text-secondary border align-middle d-none d-md-inline" style="font-weight:normal">DB <?= $ms ?>ms</span>
+      </h2>
+      <div class="d-flex flex-wrap gap-2">
         <?php if (in_array($user['role'] ?? '', ['admin', 'staff'], true)): ?>
           <a href="staff_new.php" class="btn btn-sm btn-success">＋ 講師を追加</a>
         <?php endif; ?>
         <?php if (($user['role'] ?? '') === 'admin'): ?>
-          <a href="staff_io.php?export=csv" class="btn btn-sm btn-outline-success">CSVエクスポート</a>
-          <a href="staff_io.php" class="btn btn-sm btn-outline-success">CSVインポート</a>
+          <div class="dropdown">
+            <button class="btn btn-sm btn-outline-success dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">CSV入出力</button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" href="staff_io.php?export=csv">CSVエクスポート（DL）</a></li>
+              <li><a class="dropdown-item" href="staff_io.php">CSVインポート</a></li>
+            </ul>
+          </div>
         <?php endif; ?>
-        <span class="badge bg-success">DB取得 <?= $ms ?> ms</span>
       </div>
     </div>
 
