@@ -33,6 +33,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $set[] = "$f = ?"; $vals[] = $v;
       }
     }
+    // 配属教室（複数チェックボックス → カンマ区切り）
+    if (isset($cols['classrooms'])) {
+      $cr = implode(',', array_values(array_filter(array_map('trim', (array)($_POST['classroom'] ?? [])), fn($v) => $v !== '')));
+      $set[] = "classrooms = ?"; $vals[] = $cr;
+    }
     if ($set) {
       $vals[] = $id;
       db()->prepare("UPDATE staff SET " . implode(', ', $set) . " WHERE id = ?")->execute($vals);
@@ -186,6 +191,17 @@ render_header('講師: ' . $s['name'], $user, 'index.php');
             <label class="form-label small mb-0">校舎</label>
             <input name="school" value="<?= h($val('school')) ?>" class="form-control form-control-sm">
           </div>
+          <?php if (staff_has_column('classrooms')): $myCr = classroom_list($val('classrooms')); $cls = classrooms_active(); ?>
+          <div class="col-12">
+            <label class="form-label small mb-0">配属教室（複数選択可）</label>
+            <div class="d-flex flex-wrap gap-3">
+              <?php if (!$cls): ?><span class="text-muted small">教室マスターが未登録です（<a href="classrooms.php">教室マスター</a>で追加）。</span><?php endif; ?>
+              <?php foreach ($cls as $c): ?>
+                <div class="form-check"><input class="form-check-input" type="checkbox" name="classroom[]" value="<?= h($c) ?>" id="cr_<?= h($c) ?>" <?= in_array($c, $myCr, true) ? 'checked' : '' ?>><label class="form-check-label small" for="cr_<?= h($c) ?>"><?= h($c) ?></label></div>
+              <?php endforeach; ?>
+            </div>
+          </div>
+          <?php endif; ?>
           <div class="col-md-3">
             <label class="form-label small mb-0">目標カラー</label>
             <select name="target_rank" class="form-select form-select-sm">

@@ -27,6 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       'color_rank'      => $color,
       'target_rank'     => $trank,
       'hire_date'       => (trim($_POST['hire_date'] ?? '') ?: null),
+      'classrooms'      => implode(',', array_values(array_filter(array_map('trim', (array)($_POST['classroom'] ?? [])), fn($v) => $v !== ''))),
       'is_active'       => 1,
     ];
     $names = []; $ph = []; $vals = [];
@@ -70,6 +71,16 @@ render_header('講師を追加', $user, 'index.php');
             <label class="form-label small mb-0">校舎</label>
             <input name="school" class="form-control">
           </div>
+          <?php $cls = classrooms_active(); if ($cls): ?>
+          <div class="col-12">
+            <label class="form-label small mb-0">配属教室（複数選択可）</label>
+            <div class="d-flex flex-wrap gap-3">
+              <?php foreach ($cls as $c): ?>
+                <div class="form-check"><input class="form-check-input" type="checkbox" name="classroom[]" value="<?= h($c) ?>" id="ncr_<?= h($c) ?>"><label class="form-check-label small" for="ncr_<?= h($c) ?>"><?= h($c) ?></label></div>
+              <?php endforeach; ?>
+            </div>
+          </div>
+          <?php endif; ?>
           <div class="col-md-4">
             <label class="form-label small mb-0">現在のカラー</label>
             <select name="color_rank" class="form-select">
