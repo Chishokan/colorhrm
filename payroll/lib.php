@@ -91,6 +91,7 @@ function nav_links_for($user) {
   }
   if ($role === 'admin' || $role === 'staff') {
     $links['index.php']        = 'ダッシュボード';
+    $links['shifts_matrix.php'] = 'シフト表';
     $links['shifts_admin.php'] = 'シフト管理';
     $links['payroll.php']      = '給与計算';
   }
@@ -256,7 +257,7 @@ function payslips_table_exists() {
 
 // その月の明細を発行（発行時点の金額をスナップショット upsert）。
 //   $onlyStaffId 指定で個別発行。返り値: 発行した [['staff'=>, 'data'=>], ...]
-function issue_payslips($month, $issuedBy, $onlyStaffId = null) {
+function issue_payslips($month, $issuedBy, $onlyStaffId = null, $allowedIds = null) {
   $rows = compute_month_payroll($month);
   $up = db()->prepare(
     "INSERT INTO payslips
@@ -269,6 +270,7 @@ function issue_payslips($month, $issuedBy, $onlyStaffId = null) {
   foreach ($rows as $r) {
     $sid = (int)$r['staff']['id'];
     if ($onlyStaffId !== null && $sid !== (int)$onlyStaffId) continue;
+    if (is_array($allowedIds) && !in_array($sid, $allowedIds, true)) continue; // 担当教室スコープ
     // 一括時は給与対象外（use_payroll=0）を除外。個別時は明示操作なので発行する。
     if ($onlyStaffId === null && array_key_exists('use_payroll', $r['staff']) && empty($r['staff']['use_payroll'])) continue;
     $up->execute([$sid, $month, $r['days'], $r['class_min'], $r['ops_min'], $r['class_rate'], $r['ops_rate'],
@@ -338,4 +340,48 @@ function build_payslip_pdf($slip, $staffName) {
   $pdf->SetFont('ipag', '', 9);
   $pdf->MultiCell(0, 5, '※ 本明細は発行時点の確定シフトに基づく金額です。ご不明点は管理者へお問い合わせください。');
   return $pdf->Output('S');
+}
+
+// ------------------------------------------------------------
+// 教室（校舎）スコープ：staff は担当教室の講師のみ管理できる
+// ------------------------------------------------------------
+function classrooms_active() {
+  static $c = null;
+  if ($c !== null) return $c;
+  try { $c = db()->query("SELECT name FROM classrooms WHERE is_active=1 ORDER BY sort_order, name")->fetchAll(PDO::FETCH_COLUMN); }
+  catch (Throwable $e) {
+    try { $c = db()->query("SELECT DISTINCT school FROM staff WHERE school<>'' ORDER BY school")->fetchAll(PDO::FETCH_COLUMN); }
+    catch (Throwable $e2) { $c = []; }
+  }
+  return $c;
+}
+function classroom_list($csv) {
+  return array_values(array_filter(array_map('trim', explode(',', (string)$csv)), fn($v) => $v !== ''));
+}
+// ログイン中ユーザーの担当教室（DBから最新取得）
+function user_classrooms($user) {
+  try {
+    $st = db()->prepare("SELECT classrooms FROM users WHERE id=? LIMIT 1");
+    $st->execute([(int)($user['id'] ?? 0)]);
+    return classroom_list((string)$st->fetchColumn());
+  } catch (Throwable $e) { return classroom_list($user['classrooms'] ?? ''); }
+}
+// 配属教室→staff_id。$room 指定でその教室のみ。返り値: id配列
+function staff_ids_in_classrooms($rooms) {
+  $rooms = (array)$rooms;
+  $ids = [];
+  try {
+    foreach (db()->query("SELECT id, classrooms FROM staff")->fetchAll() as $s) {
+      if (array_intersect($rooms, classroom_list($s['classrooms']))) { $ids[] = (int)$s['id']; }
+    }
+  } catch (Throwable $e) { return null; } // classrooms 列が無い等は制限しない
+  return $ids;
+}
+// 管理スコープの staff_id 集合。admin=null（制限なし）、staff=担当教室の講師、担当無し=空。
+function scoped_staff_ids($user) {
+  if (($user['role'] ?? '') === 'admin') return null;
+  $mine = user_classrooms($user);
+  if (!$mine) return [];
+  $ids = staff_ids_in_classrooms($mine);
+  return $ids === null ? null : $ids;
 }
