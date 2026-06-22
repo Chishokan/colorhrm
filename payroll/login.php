@@ -23,7 +23,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <div class="container" style="max-width:380px;margin-top:12vh">
     <div class="card shadow-sm">
       <div class="card-body p-4">
-        <h4 class="mb-1">💴 給与・シフト</h4>
+        <?php if (file_exists(__DIR__ . '/assets/logo.png')): ?>
+          <img src="assets/logo.png" alt="智翔館" style="max-height:60px" class="mb-2">
+        <?php else: ?>
+          <h4 class="mb-1">💴 給与・シフト</h4>
+        <?php endif; ?>
         <p class="text-muted small mb-3">智翔館グループ 講師キャリアパスシステム</p>
         <?php if ($err): ?>
           <div class="alert alert-danger py-2"><?= h($err) ?></div>
