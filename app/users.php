@@ -38,9 +38,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $err = 'そのメールアドレスは既に登録されています。';
       } else {
         $hash = password_hash($pw, PASSWORD_DEFAULT);
-        $sql  = "INSERT INTO users (email, password_hash, role, staff_id, display_name, is_active)
-                 VALUES (?, ?, ?, ?, ?, 1)";
-        db()->prepare($sql)->execute([$email, $hash, $role, $sid, $display]);
+        $cols = ['email', 'password_hash', 'role', 'staff_id', 'display_name', 'is_active'];
+        $vals = [$email, $hash, $role, $sid, $display, 1];
+        if (isset(users_columns()['classrooms'])) {
+          $cols[] = 'classrooms';
+          $vals[] = implode(',', array_values(array_filter(array_map('trim', (array)($_POST['classroom'] ?? [])), fn($v) => $v !== '')));
+        }
+        $ph = implode(',', array_fill(0, count($cols), '?'));
+        db()->prepare("INSERT INTO users (" . implode(',', $cols) . ") VALUES ($ph)")->execute($vals);
         $sent  = send_account_email($email, $display, $email, $pw, false);
         $flash = "ユーザー「{$email}」を作成しました。"
                . ($sent ? 'ログイン情報をメール送信しました。' : 'メールは送信していません（メール設定をご確認ください）。');
@@ -60,6 +65,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
       db()->prepare("UPDATE users SET role = ?, staff_id = ?, is_active = ? WHERE id = ?")
           ->execute([$role, $sid, $active, $id]);
+    }
+    if (isset(users_columns()['classrooms'])) {
+      $cr = implode(',', array_values(array_filter(array_map('trim', (array)($_POST['classroom'] ?? [])), fn($v) => $v !== '')));
+      db()->prepare("UPDATE users SET classrooms = ? WHERE id = ?")->execute([$cr, $id]);
     }
     $flash = 'ユーザー情報を更新しました。';
 
@@ -131,6 +140,16 @@ render_header('ユーザー管理', $user, 'users.php');
             <label class="form-label small mb-0">パスワード（8文字以上）</label>
             <input name="password" type="text" class="form-control form-control-sm" required>
           </div>
+          <?php if (isset(users_columns()['classrooms']) && classrooms_active()): ?>
+          <div class="col-12">
+            <label class="form-label small mb-0">担当教室（staff の管理範囲・複数可）</label>
+            <div class="d-flex flex-wrap gap-3">
+              <?php foreach (classrooms_active() as $c): ?>
+                <div class="form-check"><input class="form-check-input" type="checkbox" name="classroom[]" value="<?= h($c) ?>" id="ncc_<?= h($c) ?>"><label class="form-check-label small" for="ncc_<?= h($c) ?>"><?= h($c) ?></label></div>
+              <?php endforeach; ?>
+            </div>
+          </div>
+          <?php endif; ?>
           <div class="col-md-1">
             <button class="btn btn-sm btn-primary w-100">作成</button>
           </div>
@@ -183,6 +202,14 @@ render_header('ユーザー管理', $user, 'users.php');
                   <div class="col-auto form-check ms-1" title="teacherに講師一覧を許可">
                     <input class="form-check-input" type="checkbox" name="view_staff_list" id="vs<?= (int)$u['id'] ?>" <?= !empty($u['view_staff_list']) ? 'checked' : '' ?>>
                     <label class="form-check-label small" for="vs<?= (int)$u['id'] ?>">講師一覧</label>
+                  </div>
+                  <?php endif; ?>
+                  <?php if (isset(users_columns()['classrooms']) && classrooms_active()): $ucr = classroom_list($u['classrooms'] ?? ''); ?>
+                  <div class="col-12 mt-1">
+                    <span class="small text-muted me-1">担当教室:</span>
+                    <?php foreach (classrooms_active() as $c): ?>
+                      <span class="form-check form-check-inline"><input class="form-check-input" type="checkbox" name="classroom[]" value="<?= h($c) ?>" id="uc<?= (int)$u['id'] ?>_<?= h($c) ?>" <?= in_array($c, $ucr, true) ? 'checked' : '' ?>><label class="form-check-label small" for="uc<?= (int)$u['id'] ?>_<?= h($c) ?>"><?= h($c) ?></label></span>
+                    <?php endforeach; ?>
                   </div>
                   <?php endif; ?>
                   <div class="col-auto">

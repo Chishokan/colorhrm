@@ -24,6 +24,26 @@ function home_url_for($user) {
 }
 
 // ------------------------------------------------------------
+// 教室（校舎）：マスター取得と複数値ヘルパー
+// ------------------------------------------------------------
+// 有効な教室名の一覧（classrooms マスター。未作成なら staff.school から代替）
+function classrooms_active() {
+  static $c = null;
+  if ($c !== null) return $c;
+  try {
+    $c = db()->query("SELECT name FROM classrooms WHERE is_active=1 ORDER BY sort_order, name")->fetchAll(PDO::FETCH_COLUMN);
+  } catch (Throwable $e) {
+    try { $c = db()->query("SELECT DISTINCT school FROM staff WHERE school<>'' ORDER BY school")->fetchAll(PDO::FETCH_COLUMN); }
+    catch (Throwable $e2) { $c = []; }
+  }
+  return $c;
+}
+// "A,B,C" → ['A','B','C']（空要素除去）
+function classroom_list($csv) {
+  return array_values(array_filter(array_map('trim', explode(',', (string)$csv)), fn($v) => $v !== ''));
+}
+
+// ------------------------------------------------------------
 // 講師の顔写真（PII性は中。認証付き配信 photo_view.php 経由で表示）
 // ------------------------------------------------------------
 function photo_dir() {
@@ -367,6 +387,7 @@ function nav_links_for($user) {
   }
   if ($role === 'admin') {
     $links['training_master.php'] = '研修マスター';
+    $links['classrooms.php']      = '教室マスター';
     $links['lessons.php']         = '研修動画';
     $links['questions.php']       = '質問';
     $links['import.php']          = 'データ移行';
