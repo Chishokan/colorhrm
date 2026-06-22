@@ -199,7 +199,6 @@ render_header('マイページ', $user, 'mypage.php');
                   <?= h($staff['departments']) ?> / <?= h($staff['school']) ?>
                   <?php if (!empty($staff['mentor'])): ?> ・ メンター: <?= h($staff['mentor']) ?><?php endif; ?>
                 </div>
-                <a href="<?= h(rtrim(config_value('payroll_url', '/colorhrm-pay/'), '/')) ?>/shifts.php" class="btn btn-sm btn-success mt-2">💴 シフト申請・給与へ</a>
               </div>
             </div>
             <div class="text-end">
@@ -237,65 +236,52 @@ render_header('マイページ', $user, 'mypage.php');
       <?php if (!$items): ?>
         <div class="alert alert-light border">対象の研修項目がまだ登録されていません。</div>
       <?php else: ?>
-        <div class="card shadow-sm">
-          <table class="table table-hover align-middle mb-0">
-            <thead class="table-light">
-              <tr>
-                <th>部門</th>
-                <th>研修項目</th>
-                <th class="text-center">必須</th>
-                <th>状態</th>
-                <th class="text-end">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <?php foreach ($items as $it): ?>
-                <?php $status = $it['status'] ?: '未着手'; ?>
-                <tr>
-                  <td class="small text-muted"><?= h($it['department'] ?: '共通') ?></td>
-                  <td>
+        <div class="list-group shadow-sm">
+          <?php foreach ($items as $it): $status = $it['status'] ?: '未着手'; ?>
+            <div class="list-group-item">
+              <div class="d-flex justify-content-between align-items-start gap-2">
+                <div class="me-auto">
+                  <div class="fw-medium">
                     <?= h($it['item_name']) ?>
-                    <?php if (!empty($it['module_key'])): ?>
-                      <a href="lessons_view.php?module=<?= rawurlencode($it['module_key']) ?>" target="_blank" class="badge bg-info text-dark text-decoration-none">📺 教材</a>
-                    <?php endif; ?>
+                    <?php if (!empty($it['module_key'])): ?><a href="lessons_view.php?module=<?= rawurlencode($it['module_key']) ?>" target="_blank" class="badge bg-info text-dark text-decoration-none">📺 教材</a><?php endif; ?>
                     <?php if (($it['type'] ?? '') === 'テスト'): ?><span class="badge bg-light text-dark border">テスト</span><?php endif; ?>
-                    <?php if (!empty($it['progress_memo'])): ?>
-                      <div class="small text-muted">メモ: <?= h($it['progress_memo']) ?></div>
-                    <?php endif; ?>
-                  </td>
-                  <td class="text-center">
-                    <?= $it['is_required'] ? '<span class="badge bg-dark">必須</span>' : '<span class="text-muted small">任意</span>' ?>
-                  </td>
-                  <td><span class="badge <?= status_badge_class($status) ?>"><?= h($status) ?></span></td>
-                  <td class="text-end">
-                    <?php if (in_array($status, ['未着手', '差戻し', '不合格'], true)): ?>
-                      <?php if (($it['type'] ?? '') === 'テスト'): ?>
-                        <form method="post" enctype="multipart/form-data" class="d-inline-flex gap-1">
-                          <?= csrf_field() ?>
-                          <input type="hidden" name="action" value="submit_test">
-                          <input type="hidden" name="item_id" value="<?= (int)$it['id'] ?>">
-                          <input type="file" name="evidence" accept="image/jpeg,image/png" class="form-control form-control-sm" style="width:170px" required>
-                          <button class="btn btn-sm btn-primary">写真提出</button>
-                        </form>
-                      <?php else: ?>
-                        <form method="post" class="d-inline-flex gap-1">
-                          <?= csrf_field() ?>
-                          <input type="hidden" name="action" value="declare">
-                          <input type="hidden" name="item_id" value="<?= (int)$it['id'] ?>">
-                          <input type="text" name="memo" class="form-control form-control-sm" style="width:140px" placeholder="点数・実施日など">
-                          <button class="btn btn-sm btn-primary">申告</button>
-                        </form>
-                      <?php endif; ?>
-                    <?php elseif ($status === '申告中'): ?>
-                      <span class="text-muted small">承認待ち</span>
-                    <?php else: ?>
-                      <span class="text-muted small">—</span>
-                    <?php endif; ?>
-                  </td>
-                </tr>
-              <?php endforeach; ?>
-            </tbody>
-          </table>
+                  </div>
+                  <div class="small text-muted">
+                    <?= h($it['department'] ?: '共通') ?><?php if (!empty($it['progress_memo'])): ?> ・ メモ: <?= h($it['progress_memo']) ?><?php endif; ?>
+                  </div>
+                </div>
+                <div class="text-end text-nowrap">
+                  <?= $it['is_required'] ? '<span class="badge bg-dark">必須</span>' : '<span class="text-muted small">任意</span>' ?>
+                  <span class="badge <?= status_badge_class($status) ?>"><?= h($status) ?></span>
+                </div>
+              </div>
+              <?php if (in_array($status, ['未着手', '差戻し', '不合格'], true)): ?>
+                <?php if (($it['type'] ?? '') === 'テスト'): ?>
+                  <form method="post" enctype="multipart/form-data" class="mt-2">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="submit_test">
+                    <input type="hidden" name="item_id" value="<?= (int)$it['id'] ?>">
+                    <div class="input-group input-group-sm">
+                      <input type="file" name="evidence" accept="image/jpeg,image/png" class="form-control" required>
+                      <button class="btn btn-primary">写真提出</button>
+                    </div>
+                  </form>
+                <?php else: ?>
+                  <form method="post" class="mt-2">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="declare">
+                    <input type="hidden" name="item_id" value="<?= (int)$it['id'] ?>">
+                    <div class="input-group input-group-sm">
+                      <input type="text" name="memo" class="form-control" placeholder="点数・実施日など（任意）">
+                      <button class="btn btn-primary">申告</button>
+                    </div>
+                  </form>
+                <?php endif; ?>
+              <?php elseif ($status === '申告中'): ?>
+                <div class="small text-warning mt-1">承認待ち</div>
+              <?php endif; ?>
+            </div>
+          <?php endforeach; ?>
         </div>
       <?php endif; ?>
 
