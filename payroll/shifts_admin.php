@@ -20,6 +20,29 @@ if (is_array($scope)) {
   else { $scopeSql = ' AND 1=0'; }
 }
 
+// 確定シフトの教室列（015）と講師ごとの配属教室
+$sdCols = [];
+foreach (db()->query("SHOW COLUMNS FROM shift_days")->fetchAll() as $c) { $sdCols[$c['Field']] = true; }
+$hasRoom = isset($sdCols['room']);
+$teacherRooms = [];
+foreach (db()->query("SELECT id, classrooms FROM staff")->fetchAll() as $s) { $teacherRooms[(int)$s['id']] = classroom_list($s['classrooms'] ?? ''); }
+// 教室を講師の配属に収める（未指定/配属外は配属の先頭、配属無しは空）
+$normRoom = function ($sid, $room) use ($teacherRooms) {
+  $room  = trim((string)$room);
+  $rooms = $teacherRooms[(int)$sid] ?? [];
+  if ($room !== '' && (!$rooms || in_array($room, $rooms, true))) return $room;
+  return $rooms[0] ?? '';
+};
+function insert_shift_day($staffId, $date, $start, $end, $class, $note, $appId, $room, $hasRoom) {
+  if ($hasRoom) {
+    db()->prepare("INSERT INTO shift_days (tenant_id,staff_id,work_date,room,start_time,end_time,class_minutes,note,application_id) VALUES (1,?,?,?,?,?,?,?,?)")
+        ->execute([$staffId, $date, $room, $start, $end, $class, $note, $appId]);
+  } else {
+    db()->prepare("INSERT INTO shift_days (tenant_id,staff_id,work_date,start_time,end_time,class_minutes,note,application_id) VALUES (1,?,?,?,?,?,?,?)")
+        ->execute([$staffId, $date, $start, $end, $class, $note, $appId]);
+  }
+}
+
 $flash = ''; $err = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check();
@@ -33,10 +56,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($a && $inScope($a['staff_id'])) {
       $tot = shift_minutes($a['start_time'], $a['end_time']);
       if ($cls > $tot) $cls = $tot;
-      db()->prepare("INSERT INTO shift_days (tenant_id,staff_id,work_date,start_time,end_time,class_minutes,note,application_id) VALUES (1,?,?,?,?,?,?,?)")
-          ->execute([$a['staff_id'], $a['work_date'], $a['start_time'], $a['end_time'], $cls, $a['note'], $appId]);
+      $room = $normRoom($a['staff_id'], $_POST['room'] ?? '');
+      insert_shift_day($a['staff_id'], $a['work_date'], $a['start_time'], $a['end_time'], $cls, $a['note'], $appId, $room, $hasRoom);
       db()->prepare("UPDATE shift_applications SET status='確定' WHERE id=?")->execute([$appId]);
-      $flash = 'シフトを確定しました。';
+      $flash = $room !== '' ? "シフトを確定しました（教室：{$room}）。" : 'シフトを確定しました。';
     }
   } elseif ($action === 'reject') {
     $rid = (int)($_POST['id'] ?? 0);
@@ -54,12 +77,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $rows = $list->fetchAll();
     db()->beginTransaction();
     try {
-      $ins = db()->prepare("INSERT INTO shift_days (tenant_id,staff_id,work_date,start_time,end_time,class_minutes,note,application_id) VALUES (1,?,?,?,?,?,?,?)");
       $upd = db()->prepare("UPDATE shift_applications SET status='確定' WHERE id=?");
       $n = 0;
       foreach ($rows as $a) {
         if (!$inScope($a['staff_id'])) continue;
-        $ins->execute([$a['staff_id'], $a['work_date'], $a['start_time'], $a['end_time'], 0, $a['note'], $a['id']]);
+        $room = $normRoom($a['staff_id'], ''); // 配属の先頭教室で確定（各行で変更可）
+        insert_shift_day($a['staff_id'], $a['work_date'], $a['start_time'], $a['end_time'], 0, $a['note'], $a['id'], $room, $hasRoom);
         $upd->execute([$a['id']]);
         $n++;
       }
@@ -80,8 +103,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $err = '講師・日付・開始/終了（終了は開始より後）を正しく入力してください。';
     } else {
       $tot = shift_minutes($st, $et); if ($cls > $tot) $cls = $tot;
-      db()->prepare("INSERT INTO shift_days (tenant_id,staff_id,work_date,start_time,end_time,class_minutes,note) VALUES (1,?,?,?,?,?,?)")
-          ->execute([$sid, $d, $st, $et, $cls, $note]);
+      $room = $normRoom($sid, $_POST['room'] ?? '');
+      insert_shift_day($sid, $d, $st, $et, $cls, $note, null, $room, $hasRoom);
       $flash = '確定シフトを追加しました。';
     }
   } elseif ($action === 'update_day') {
@@ -92,7 +115,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $os = db()->prepare("SELECT staff_id FROM shift_days WHERE id=?"); $os->execute([$id]); $osid = $os->fetchColumn();
     if ($osid !== false && $inScope($osid) && shift_minutes($st, $et) > 0) {
       $tot = shift_minutes($st, $et); if ($cls > $tot) $cls = $tot;
-      db()->prepare("UPDATE shift_days SET start_time=?, end_time=?, class_minutes=? WHERE id=?")->execute([$st, $et, $cls, $id]);
+      if ($hasRoom) {
+        $room = $normRoom($osid, $_POST['room'] ?? '');
+        db()->prepare("UPDATE shift_days SET room=?, start_time=?, end_time=?, class_minutes=? WHERE id=?")->execute([$room, $st, $et, $cls, $id]);
+      } else {
+        db()->prepare("UPDATE shift_days SET start_time=?, end_time=?, class_minutes=? WHERE id=?")->execute([$st, $et, $cls, $id]);
+      }
       $flash = '確定シフトを更新しました。';
     } else { $err = '終了は開始より後、または権限のあるシフトを指定してください。'; }
   } elseif ($action === 'delete_day') {
@@ -168,7 +196,7 @@ render_header('シフト管理', $user, 'shifts_admin.php');
       </div>
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
-          <thead class="table-light"><tr><th>講師</th><th>日付</th><th>時間</th><th class="text-end">稼働</th><th>メモ</th><th style="width:120px">授業(分)</th><th></th></tr></thead>
+          <thead class="table-light"><tr><th>講師</th><th>日付</th><th>時間</th><th class="text-end">稼働</th><th>メモ</th><th style="width:210px">教室／授業(分)</th><th></th></tr></thead>
           <tbody>
             <?php foreach ($pending as $a): $tot = shift_minutes($a['start_time'],$a['end_time']); ?>
               <tr>
@@ -180,7 +208,13 @@ render_header('シフト管理', $user, 'shifts_admin.php');
                 <td>
                   <form method="post" class="d-flex gap-1" id="cf<?= (int)$a['id'] ?>">
                     <?= csrf_field() ?><input type="hidden" name="action" value="confirm"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
-                    <input type="number" name="class_minutes" value="0" min="0" max="<?= $tot ?>" class="form-control form-control-sm">
+                    <?php if ($hasRoom): $trs = $teacherRooms[(int)$a['staff_id']] ?? []; ?>
+                      <select name="room" class="form-select form-select-sm" style="max-width:104px" title="確定する教室">
+                        <?php foreach ($trs as $rm): ?><option value="<?= h($rm) ?>"><?= h($rm) ?></option><?php endforeach; ?>
+                        <?php if (!$trs): ?><option value="">（配属なし）</option><?php endif; ?>
+                      </select>
+                    <?php endif; ?>
+                    <input type="number" name="class_minutes" value="0" min="0" max="<?= $tot ?>" class="form-control form-control-sm" style="max-width:78px" title="授業分">
                   </form>
                 </td>
                 <td class="text-end text-nowrap">
@@ -205,6 +239,8 @@ render_header('シフト管理', $user, 'shifts_admin.php');
           <div class="col-auto"><label class="form-label small mb-0">日付</label><input type="date" name="work_date" value="<?= h($month) ?>-01" class="form-control form-control-sm" required></div>
           <div class="col-auto"><label class="form-label small mb-0">開始</label><input type="time" name="start_time" class="form-control form-control-sm" required></div>
           <div class="col-auto"><label class="form-label small mb-0">終了</label><input type="time" name="end_time" class="form-control form-control-sm" required></div>
+          <div class="col-auto"><label class="form-label small mb-0">教室</label>
+            <select name="room" class="form-select form-select-sm"><option value="">（自動）</option><?php foreach (classrooms_active() as $rm): ?><option value="<?= h($rm) ?>"><?= h($rm) ?></option><?php endforeach; ?></select></div>
           <div class="col-auto"><label class="form-label small mb-0">授業(分)</label><input type="number" name="class_minutes" value="0" min="0" class="form-control form-control-sm" style="width:90px"></div>
           <div class="col"><label class="form-label small mb-0">メモ</label><input name="note" class="form-control form-control-sm"></div>
           <div class="col-auto"><button class="btn btn-sm btn-outline-success">追加</button></div>
@@ -216,7 +252,7 @@ render_header('シフト管理', $user, 'shifts_admin.php');
       <div class="card-header">確定シフト（<?= h($month) ?>）</div>
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
-          <thead class="table-light"><tr><th>講師</th><th>日付</th><th style="width:104px">開始</th><th style="width:104px">終了</th><th class="text-end">稼働</th><th style="width:104px">授業(分)</th><th class="text-end">運営</th><th>出勤</th><th>退勤</th><th>判定</th><th></th></tr></thead>
+          <thead class="table-light"><tr><th>講師</th><th>日付</th><th>教室</th><th style="width:104px">開始</th><th style="width:104px">終了</th><th class="text-end">稼働</th><th style="width:104px">授業(分)</th><th class="text-end">運営</th><th>出勤</th><th>退勤</th><th>判定</th><th></th></tr></thead>
           <tbody>
             <?php foreach ($days as $d): $tot=shift_minutes($d['start_time'],$d['end_time']); $cls=min((int)$d['class_minutes'],$tot);
               $att = $attBy[$d['staff_id'].'|'.$d['work_date']] ?? null;
@@ -225,6 +261,15 @@ render_header('シフト管理', $user, 'shifts_admin.php');
                 <td><?= h($names[(int)$d['staff_id']] ?? ('#'.$d['staff_id'])) ?></td>
                 <td><?= h($d['work_date']) ?></td>
                 <form method="post" id="ud<?= (int)$d['id'] ?>"><?= csrf_field() ?><input type="hidden" name="action" value="update_day"><input type="hidden" name="id" value="<?= (int)$d['id'] ?>"></form>
+                <td>
+                  <?php if ($hasRoom): $trs = $teacherRooms[(int)$d['staff_id']] ?? []; $cur = $d['room'] ?? ''; ?>
+                    <select form="ud<?= (int)$d['id'] ?>" name="room" class="form-select form-select-sm" style="min-width:90px">
+                      <?php foreach ($trs as $rm): ?><option value="<?= h($rm) ?>" <?= $cur === $rm ? 'selected' : '' ?>><?= h($rm) ?></option><?php endforeach; ?>
+                      <?php if ($cur !== '' && !in_array($cur, $trs, true)): ?><option value="<?= h($cur) ?>" selected><?= h($cur) ?></option><?php endif; ?>
+                      <?php if (!$trs && $cur === ''): ?><option value="">—</option><?php endif; ?>
+                    </select>
+                  <?php else: ?>—<?php endif; ?>
+                </td>
                 <td><input form="ud<?= (int)$d['id'] ?>" type="time" name="start_time" value="<?= h(hm($d['start_time'])) ?>" class="form-control form-control-sm"></td>
                 <td><input form="ud<?= (int)$d['id'] ?>" type="time" name="end_time" value="<?= h(hm($d['end_time'])) ?>" class="form-control form-control-sm"></td>
                 <td class="text-end"><?= h(fmt_hm($tot)) ?></td>
@@ -239,7 +284,7 @@ render_header('シフト管理', $user, 'shifts_admin.php');
                 </td>
               </tr>
             <?php endforeach; ?>
-            <?php if (!$days): ?><tr><td colspan="11" class="text-center text-muted py-3">確定シフトはありません。</td></tr><?php endif; ?>
+            <?php if (!$days): ?><tr><td colspan="12" class="text-center text-muted py-3">確定シフトはありません。</td></tr><?php endif; ?>
           </tbody>
         </table>
       </div>
