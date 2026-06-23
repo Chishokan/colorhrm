@@ -111,47 +111,105 @@ function nav_links_for($user) {
   return $links;
 }
 
+// admin/staff の左サイドバー用にメニューをグループ化（ColorHRMと同形式）
+function nav_groups_for($user) {
+  $role = $user['role'] ?? '';
+  $g = [];
+  $g[] = ['label' => '', 'items' => ['index.php' => 'ダッシュボード']];
+  $g[] = ['label' => 'シフト', 'items' => [
+    'shifts_matrix.php' => 'シフト表',
+    'shifts_admin.php'  => 'シフト管理',
+  ]];
+  $pay = ['payroll.php' => '給与計算'];
+  if ($role === 'admin') { $pay['rates.php'] = '時給表'; }
+  $g[] = ['label' => '給与', 'items' => $pay];
+  return $g;
+}
+
 function render_header($title, $user, $active = '') {
-  $role  = $user['role'] ?? '';
-  $links = nav_links_for($user);
+  $role     = $user['role'] ?? '';
   $colorhrm = config_value('colorhrm_url', '/colorhrm/');
+  $uname    = ($user['display_name'] ?? '') ?: ($user['email'] ?? '');
+  $sidebar  = ($role === 'admin' || $role === 'staff'); // 講師は従来の上部メニュー
+  $GLOBALS['payroll_layout'] = $sidebar ? 'sidebar' : 'top';
+
   echo '<!doctype html><html lang="ja"><head><meta charset="utf-8">';
   echo '<meta name="viewport" content="width=device-width, initial-scale=1">';
   echo '<title>' . h($title) . '</title>';
   echo '<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">';
-  echo '</head><body class="bg-light">';
-  echo '<nav class="navbar navbar-dark bg-success px-3">';
-  if (logo_mark_url() !== '') {
-    echo '<span class="navbar-brand d-flex align-items-center"><img src="' . h(logo_mark_url()) . '" alt="" style="height:30px" class="me-2">給与・シフト</span>';
-  } else {
-    echo '<span class="navbar-brand">💴 給与・シフト</span>';
+  if ($sidebar) {
+    echo '<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" defer></script>';
+    echo '<style>@media(min-width:992px){.pay-sidebar{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto}}</style>';
   }
-  $teacher = ($role === 'teacher');
-  echo '<div class="ms-3 me-auto d-flex flex-wrap gap-2 py-1">';
-  foreach ($links as $href => $label) {
-    $isActive = ($href === $active);
-    if ($teacher) {
+  echo '</head><body class="bg-light">';
+
+  if (!$sidebar) {
+    // ---- teacher：従来の上部メニュー（変更なし） ----
+    $links = nav_links_for($user);
+    echo '<nav class="navbar navbar-dark bg-success px-3">';
+    if (logo_mark_url() !== '') {
+      echo '<span class="navbar-brand d-flex align-items-center"><img src="' . h(logo_mark_url()) . '" alt="" style="height:30px" class="me-2">給与・シフト</span>';
+    } else {
+      echo '<span class="navbar-brand">💴 給与・シフト</span>';
+    }
+    echo '<div class="ms-3 me-auto d-flex flex-wrap gap-2 py-1">';
+    foreach ($links as $href => $label) {
+      $isActive = ($href === $active);
       // 講師は大きめのボタン。打刻は最頻出のため黄色で強調。
       if ($href === 'punch.php') {
         $cls = 'btn btn-warning fw-bold' . ($isActive ? ' active' : '');
       } else {
         $cls = $isActive ? 'btn btn-light fw-semibold' : 'btn btn-outline-light fw-semibold';
       }
-    } else {
-      $cls = $isActive ? 'btn btn-sm btn-light' : 'btn btn-sm btn-outline-light';
+      echo '<a href="' . h($href) . '" class="' . $cls . '">' . h($label) . '</a>';
     }
-    echo '<a href="' . h($href) . '" class="' . $cls . '">' . h($label) . '</a>';
+    echo '<a href="' . h($colorhrm) . '" class="btn btn-outline-light fw-semibold">🎓 ColorHRMへ</a>';
+    echo '</div>';
+    echo '<span class="text-white-50 me-3 small">' . h($uname) . '（' . h($role) . '）</span>';
+    echo '<a href="logout.php" class="btn btn-sm btn-outline-light">ログアウト</a>';
+    echo '</nav>';
+    return;
   }
-  $chrmCls = $teacher ? 'btn btn-outline-light fw-semibold' : 'btn btn-sm btn-outline-light';
-  echo '<a href="' . h($colorhrm) . '" class="' . $chrmCls . '">🎓 ColorHRMへ</a>';
-  echo '</div>';
-  echo '<span class="text-white-50 me-3 small">'
-     . h(($user['display_name'] ?? '') ?: ($user['email'] ?? '')) . '（' . h($role) . '）</span>';
+
+  // ---- admin / staff：左サイドバー（ColorHRMと同形式） ----
+  $groups = nav_groups_for($user);
+  echo '<nav class="navbar navbar-dark bg-success px-3">';
+  echo '<button class="navbar-toggler d-lg-none border-0 me-2 p-1" type="button" data-bs-toggle="offcanvas" data-bs-target="#paySidebar" aria-label="メニュー"><span class="navbar-toggler-icon"></span></button>';
+  if (logo_mark_url() !== '') {
+    echo '<span class="navbar-brand d-flex align-items-center mb-0"><img src="' . h(logo_mark_url()) . '" alt="" style="height:28px" class="me-2">給与・シフト</span>';
+  } else {
+    echo '<span class="navbar-brand mb-0">💴 給与・シフト</span>';
+  }
+  echo '<div class="ms-auto d-flex align-items-center gap-2">';
+  echo '<a href="' . h($colorhrm) . '" class="btn btn-sm btn-outline-light">🎓 ColorHRM</a>';
+  echo '<span class="text-white-50 small d-none d-sm-inline">' . h($uname) . '（' . h($role) . '）</span>';
   echo '<a href="logout.php" class="btn btn-sm btn-outline-light">ログアウト</a>';
-  echo '</nav>';
+  echo '</div></nav>';
+  echo '<div class="d-flex">';
+  echo '<div class="offcanvas-lg offcanvas-start bg-white border-end pay-sidebar" tabindex="-1" id="paySidebar" style="width:230px">';
+  echo '<div class="offcanvas-header d-lg-none"><span class="fw-bold">メニュー</span><button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#paySidebar"></button></div>';
+  echo '<div class="offcanvas-body d-block p-2">';
+  echo '<ul class="nav nav-pills flex-column mb-0">';
+  foreach ($groups as $grp) {
+    if (!empty($grp['label'])) {
+      echo '<li class="nav-item mt-2 mb-1"><span class="text-muted small fw-bold px-2">' . h($grp['label']) . '</span></li>';
+    }
+    foreach ($grp['items'] as $href => $label) {
+      $act = ($href === $active) ? ' active' : '';
+      echo '<li class="nav-item"><a class="nav-link py-1' . $act . '" href="' . h($href) . '">' . h($label) . '</a></li>';
+    }
+  }
+  echo '</ul></div></div>';
+  echo '<main class="flex-grow-1" style="min-width:0">';
 }
 
-function render_footer() { echo '</body></html>'; }
+function render_footer() {
+  if (($GLOBALS['payroll_layout'] ?? 'top') === 'sidebar') {
+    echo '</main></div></body></html>';
+  } else {
+    echo '</body></html>';
+  }
+}
 
 // ------------------------------------------------------------
 // シフト時間ヘルパー
