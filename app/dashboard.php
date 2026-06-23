@@ -3,27 +3,49 @@ require __DIR__ . '/auth.php';
 require __DIR__ . '/helpers.php';
 require_login();
 require_role(['admin', 'staff']);
-require_recruitment_access();
 $user = current_user();
 
 $thisMonth = (int)date('n');
 
-// サマリー（candidates は応募月のみ保持＝年は持たないため「今月」は applied_month で判定）
-$st = db()->prepare("SELECT COUNT(*) FROM candidates WHERE tenant_id=1 AND applied_month = ?");
-$st->execute([$thisMonth]);
-$appliedThisMonth = (int)$st->fetchColumn();
+// ---- 承認待ち（申告中）を教室別に ----
+$pendingApprovals = [];
+try {
+  $hasCr = staff_has_column('classrooms');
+  $pendingApprovals = db()->query(
+    "SELECT tp.id, tp.declared_at, s.id AS staff_id, s.name AS staff_name, "
+    . ($hasCr ? "s.classrooms" : "'' AS classrooms")
+    . ", ti.item_name, ti.type
+       FROM training_progress tp
+       JOIN staff s ON s.id = tp.staff_id
+       JOIN training_items ti ON ti.id = tp.training_item_id
+      WHERE tp.status = '申告中'
+      ORDER BY tp.declared_at")->fetchAll();
+} catch (Throwable $e) { $pendingApprovals = []; }
+$pendingByRoom = [];
+foreach ($pendingApprovals as $p) {
+  $rooms = classroom_list($p['classrooms'] ?? '');
+  if (!$rooms) { $rooms = ['（教室未設定）']; }
+  foreach ($rooms as $rm) { $pendingByRoom[$rm][] = $p; }
+}
+ksort($pendingByRoom);
 
-$hiredTotal     = (int)db()->query("SELECT COUNT(*) FROM candidates WHERE tenant_id=1 AND selection_result='採用'")->fetchColumn();
-$pendingConvert = (int)db()->query("SELECT COUNT(*) FROM candidates WHERE tenant_id=1 AND selection_result='採用' AND converted_to_staff=0")->fetchColumn();
-$unscreened     = (int)db()->query("SELECT COUNT(*) FROM candidates WHERE tenant_id=1 AND (selection_result IS NULL OR selection_result='')")->fetchColumn();
-$noInitial      = (int)db()->query("SELECT COUNT(*) FROM candidates WHERE tenant_id=1 AND initial_response=0")->fetchColumn();
-
-// 要対応リスト（未選考 or 初期対応未）
-$todo = db()->query(
-  "SELECT id, no, name, department, selection_result, initial_response
-     FROM candidates
-    WHERE tenant_id=1 AND ((selection_result IS NULL OR selection_result='') OR initial_response=0)
-    ORDER BY applied_month DESC, applied_day DESC LIMIT 20")->fetchAll();
+// ---- 採用サマリー（現状は非表示。show_recruitment で再有効化）----
+$appliedThisMonth = $hiredTotal = $pendingConvert = $unscreened = $noInitial = 0;
+$todo = [];
+if (show_recruitment()) {
+  $st = db()->prepare("SELECT COUNT(*) FROM candidates WHERE tenant_id=1 AND applied_month = ?");
+  $st->execute([$thisMonth]);
+  $appliedThisMonth = (int)$st->fetchColumn();
+  $hiredTotal     = (int)db()->query("SELECT COUNT(*) FROM candidates WHERE tenant_id=1 AND selection_result='採用'")->fetchColumn();
+  $pendingConvert = (int)db()->query("SELECT COUNT(*) FROM candidates WHERE tenant_id=1 AND selection_result='採用' AND converted_to_staff=0")->fetchColumn();
+  $unscreened     = (int)db()->query("SELECT COUNT(*) FROM candidates WHERE tenant_id=1 AND (selection_result IS NULL OR selection_result='')")->fetchColumn();
+  $noInitial      = (int)db()->query("SELECT COUNT(*) FROM candidates WHERE tenant_id=1 AND initial_response=0")->fetchColumn();
+  $todo = db()->query(
+    "SELECT id, no, name, department, selection_result, initial_response
+       FROM candidates
+      WHERE tenant_id=1 AND ((selection_result IS NULL OR selection_result='') OR initial_response=0)
+      ORDER BY applied_month DESC, applied_day DESC LIMIT 20")->fetchAll();
+}
 
 // ---- 育成（在籍講師）の集計 ----
 $activeStaff = db()->query("SELECT * FROM staff WHERE tenant_id=1 AND is_active=1 ORDER BY name")->fetchAll();
@@ -67,6 +89,34 @@ render_header('ダッシュボード', $user, 'dashboard.php');
   <div class="container py-4">
     <h4 class="mb-3">ダッシュボード <span class="text-muted small">（<?= $thisMonth ?>月）</span></h4>
 
+    <!-- 承認待ち（教室別）：一番上 -->
+    <div class="card shadow-sm mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>研修 承認待ち（教室別）</span>
+        <span class="badge bg-warning text-dark"><?= count($pendingApprovals) ?> 件</span>
+      </div>
+      <div class="card-body">
+        <?php if (!$pendingApprovals): ?>
+          <div class="text-muted">承認待ちの申告はありません。</div>
+        <?php else: ?>
+          <?php foreach ($pendingByRoom as $room => $list): ?>
+            <div class="mb-3">
+              <div class="fw-bold small text-primary mb-1">教室: <?= h($room) ?> <span class="badge bg-warning text-dark"><?= count($list) ?></span></div>
+              <ul class="list-group list-group-flush">
+                <?php foreach ($list as $p): ?>
+                  <li class="list-group-item d-flex justify-content-between align-items-center py-1 flex-wrap gap-1">
+                    <span><a href="training.php?staff_id=<?= (int)$p['staff_id'] ?>"><?= h($p['staff_name']) ?></a> ・ <?= h($p['item_name']) ?> <span class="badge bg-light text-dark border"><?= h(training_type_label($p['type'])) ?></span></span>
+                    <a href="training.php?staff_id=<?= (int)$p['staff_id'] ?>" class="btn btn-sm btn-outline-success">承認へ</a>
+                  </li>
+                <?php endforeach; ?>
+              </ul>
+            </div>
+          <?php endforeach; ?>
+        <?php endif; ?>
+      </div>
+    </div>
+
+    <?php if (show_recruitment()): ?>
     <div class="row g-3 mb-4">
       <?= stat_card('今月の応募', $appliedThisMonth, 'candidates.php', 'bg-primary') ?>
       <?= stat_card('採用（累計）', $hiredTotal, 'candidates.php?selection_result=' . rawurlencode('採用'), 'bg-success') ?>
@@ -97,6 +147,7 @@ render_header('ダッシュボード', $user, 'dashboard.php');
         </tbody>
       </table>
     </div>
+    <?php endif; ?>
 
     <!-- 育成サマリー -->
     <h5 class="mt-4 mb-2">育成（在籍講師 <?= $staffTotal ?>名）</h5>

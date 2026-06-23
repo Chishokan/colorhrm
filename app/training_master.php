@@ -174,8 +174,7 @@ render_header('研修マスター', $user, 'training_master.php');
           <div class="col-md-1">
             <label class="form-label small mb-0">種別</label>
             <select name="type" class="form-select form-select-sm">
-              <option value="">通常</option>
-              <option value="テスト">テスト</option>
+              <?php foreach (training_type_options() as $t): ?><option value="<?= h($t) ?>"><?= h($t) ?></option><?php endforeach; ?>
             </select>
           </div>
           <?php endif; ?>
@@ -250,8 +249,9 @@ render_header('研修マスター', $user, 'training_master.php');
                 <?php if ($hasType): ?>
                   <span class="text-muted">種別</span>
                   <select name="type" class="form-select form-select-sm" style="max-width:110px">
-                    <option value="" <?= ($it['type'] ?? '') === '' ? 'selected' : '' ?>>通常</option>
-                    <option value="テスト" <?= ($it['type'] ?? '') === 'テスト' ? 'selected' : '' ?>>テスト</option>
+                    <?php $tl = training_type_label($it['type'] ?? ''); foreach (training_type_options() as $t): ?>
+                      <option value="<?= h($t) ?>" <?= $tl === $t ? 'selected' : '' ?>><?= h($t) ?></option>
+                    <?php endforeach; ?>
                   </select>
                 <?php endif; ?>
                 <?php if ($hasModule): ?>

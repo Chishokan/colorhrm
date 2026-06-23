@@ -231,7 +231,10 @@ render_header('マイページ', $user, 'mypage.php');
       <h5 class="mb-2">研修進捗
         <small class="text-muted">（育成目標カラー: <?= h($targetColor) ?>）</small>
       </h5>
-      <div class="small text-muted mb-2">※ 写真のアップロード（テストの写真提出・顔写真）は JPG / PNG（両方可）、上限 8MB です。</div>
+      <div class="small text-muted mb-2">
+        ※ <span class="badge bg-light text-dark border">テスト</span>はテスト結果、<span class="badge bg-light text-dark border">OJT</span>はOJT記録の<strong>写真</strong>を投稿してください（JPG/PNG・上限8MB）。
+        <span class="badge bg-light text-dark border">研修</span>はLINE WORKSにリフレクションを投稿したら<strong>「投稿済み」</strong>を押してください。
+      </div>
 
       <?php if (!$items): ?>
         <div class="alert alert-light border">対象の研修項目がまだ登録されていません。</div>
@@ -244,7 +247,7 @@ render_header('マイページ', $user, 'mypage.php');
                   <div class="fw-medium">
                     <?= h($it['item_name']) ?>
                     <?php if (!empty($it['module_key'])): ?><a href="lessons_view.php?module=<?= rawurlencode($it['module_key']) ?>" target="_blank" class="badge bg-info text-dark text-decoration-none">📺 教材</a><?php endif; ?>
-                    <?php if (($it['type'] ?? '') === 'テスト'): ?><span class="badge bg-light text-dark border">テスト</span><?php endif; ?>
+                    <span class="badge bg-light text-dark border"><?= h(training_type_label($it['type'] ?? '')) ?></span>
                   </div>
                   <div class="small text-muted">
                     <?= h($it['department'] ?: '共通') ?><?php if (!empty($it['progress_memo'])): ?> ・ メモ: <?= h($it['progress_memo']) ?><?php endif; ?>
@@ -256,14 +259,14 @@ render_header('マイページ', $user, 'mypage.php');
                 </div>
               </div>
               <?php if (in_array($status, ['未着手', '差戻し', '不合格'], true)): ?>
-                <?php if (($it['type'] ?? '') === 'テスト'): ?>
+                <?php if (training_is_photo_type($it['type'] ?? '')): ?>
                   <form method="post" enctype="multipart/form-data" class="mt-2">
                     <?= csrf_field() ?>
                     <input type="hidden" name="action" value="submit_test">
                     <input type="hidden" name="item_id" value="<?= (int)$it['id'] ?>">
                     <div class="input-group input-group-sm">
                       <input type="file" name="evidence" accept="image/jpeg,image/png" class="form-control" required>
-                      <button class="btn btn-primary">写真提出</button>
+                      <button class="btn btn-primary text-nowrap"><?= ($it['type'] ?? '') === 'OJT' ? 'OJT写真提出' : '写真提出' ?></button>
                     </div>
                   </form>
                 <?php else: ?>
@@ -271,10 +274,8 @@ render_header('マイページ', $user, 'mypage.php');
                     <?= csrf_field() ?>
                     <input type="hidden" name="action" value="declare">
                     <input type="hidden" name="item_id" value="<?= (int)$it['id'] ?>">
-                    <div class="input-group input-group-sm">
-                      <input type="text" name="memo" class="form-control" placeholder="点数・実施日など（任意）">
-                      <button class="btn btn-primary">申告</button>
-                    </div>
+                    <button class="btn btn-sm btn-primary">投稿済み</button>
+                    <span class="small text-muted ms-1">（LINE WORKSにリフレクション投稿後）</span>
                   </form>
                 <?php endif; ?>
               <?php elseif ($status === '申告中'): ?>

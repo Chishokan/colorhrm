@@ -18,6 +18,21 @@ function config_value($key, $default = '') {
   return $c[$key] ?? $default;
 }
 
+// 研修項目の種別（研修 / テスト / OJT）。空は「研修」扱い。
+function training_type_options() { return ['研修', 'テスト', 'OJT']; }
+function training_type_label($type) {
+  $t = trim((string)$type);
+  return ($t === 'テスト' || $t === 'OJT') ? $t : '研修';
+}
+// 写真（証跡）提出が必要な種別か（テスト・OJT）。研修は「投稿済み」申告。
+function training_is_photo_type($type) {
+  return in_array(trim((string)$type), ['テスト', 'OJT'], true);
+}
+// 採用（リクルート）機能を表示するか。現状は隠す（config で再有効化可）。
+function show_recruitment() {
+  return (bool)config_value('show_recruitment', false);
+}
+
 // ログイン後/トップの遷移先（teacher はマイページ、admin/staff は講師一覧）
 function home_url_for($user) {
   return (($user['role'] ?? '') === 'teacher') ? 'mypage.php' : 'index.php';
@@ -415,12 +430,13 @@ function nav_groups_for($user) {
     return $g;
   }
   if ($role === 'admin' || $role === 'staff') {
-    if (can_view_recruitment($user)) {
-      $rec = ['dashboard.php' => 'ダッシュボード', 'candidates.php' => '採用'];
+    $g[] = ['label' => '', 'items' => ['dashboard.php' => 'ダッシュボード']];
+    $g[] = ['label' => '育成', 'items' => ['index.php' => '講師一覧', 'training.php' => '研修管理']];
+    if (show_recruitment() && can_view_recruitment($user)) {
+      $rec = ['candidates.php' => '採用'];
       if ($role === 'admin') { $rec['import.php'] = 'データ移行'; }
       $g[] = ['label' => '採用', 'items' => $rec];
     }
-    $g[] = ['label' => '育成', 'items' => ['index.php' => '講師一覧', 'training.php' => '研修管理']];
     if ($role === 'admin') {
       $g[] = ['label' => 'コンテンツ・マスター', 'items' => [
         'training_master.php' => '研修マスター',
