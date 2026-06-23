@@ -126,12 +126,24 @@ function render_header($title, $user, $active = '') {
   } else {
     echo '<span class="navbar-brand">💴 給与・シフト</span>';
   }
-  echo '<div class="ms-3 me-auto">';
+  $teacher = ($role === 'teacher');
+  echo '<div class="ms-3 me-auto d-flex flex-wrap gap-2 py-1">';
   foreach ($links as $href => $label) {
-    $cls = ($href === $active) ? 'btn btn-sm btn-light me-1' : 'btn btn-sm btn-outline-light me-1';
+    $isActive = ($href === $active);
+    if ($teacher) {
+      // 講師は大きめのボタン。打刻は最頻出のため黄色で強調。
+      if ($href === 'punch.php') {
+        $cls = 'btn btn-warning fw-bold' . ($isActive ? ' active' : '');
+      } else {
+        $cls = $isActive ? 'btn btn-light fw-semibold' : 'btn btn-outline-light fw-semibold';
+      }
+    } else {
+      $cls = $isActive ? 'btn btn-sm btn-light' : 'btn btn-sm btn-outline-light';
+    }
     echo '<a href="' . h($href) . '" class="' . $cls . '">' . h($label) . '</a>';
   }
-  echo '<a href="' . h($colorhrm) . '" class="btn btn-sm btn-outline-light me-1">🎓 ColorHRMへ</a>';
+  $chrmCls = $teacher ? 'btn btn-outline-light fw-semibold' : 'btn btn-sm btn-outline-light';
+  echo '<a href="' . h($colorhrm) . '" class="' . $chrmCls . '">🎓 ColorHRMへ</a>';
   echo '</div>';
   echo '<span class="text-white-50 me-3 small">'
      . h(($user['display_name'] ?? '') ?: ($user['email'] ?? '')) . '（' . h($role) . '）</span>';

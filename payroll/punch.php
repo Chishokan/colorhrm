@@ -16,7 +16,7 @@ if ($staffId <= 0) {
 
 $today = date('Y-m-d');
 $now   = date('H:i:s');
-$flash = ''; $err = '';
+$flash = ''; $err = ''; $warn = '';
 
 // 本人の配属教室
 $st = db()->prepare("SELECT name, classrooms FROM staff WHERE id=? LIMIT 1");
@@ -34,9 +34,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && attendance_table_exists()) {
   csrf_check();
   $action = $_POST['action'] ?? '';
   $room   = trim($_POST['room'] ?? '');
-  if (!$todayShift) {
-    $err = '本日は確定シフトがないため打刻できません。';
-  } elseif ($room === '' || ($rooms && !in_array($room, $rooms, true))) {
+  // シフトがない日でも打刻は可能。判定用に「シフトなし」を注意表示する。
+  $noShift = !$todayShift;
+  if ($room === '' || ($rooms && !in_array($room, $rooms, true))) {
     $err = '配属教室から教室を選んでください。';
   } else {
     // 本日の打刻行
@@ -50,6 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && attendance_table_exists()) {
                        ON DUPLICATE KEY UPDATE clock_in=VALUES(clock_in), in_room=VALUES(in_room)")
             ->execute([$staffId, $today, $now, $room]);
         $flash = "出勤を打刻しました（{$room} / " . hm($now) . "）。";
+        if ($noShift) { $warn = '本日は確定シフトがありません（シフトなしで打刻しました）。'; }
       }
     } elseif ($action === 'clock_out') {
       if (!$att || empty($att['clock_in'])) { $err = '先に出勤打刻をしてください。'; }
@@ -57,6 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && attendance_table_exists()) {
       else {
         db()->prepare("UPDATE attendance SET clock_out=?, out_room=? WHERE id=?")->execute([$now, $room, (int)$att['id']]);
         $flash = "退勤を打刻しました（{$room} / " . hm($now) . "）。";
+        if ($noShift) { $warn = '本日は確定シフトがありません（シフトなしで打刻しました）。'; }
       }
     }
   }
@@ -84,6 +86,22 @@ if (attendance_table_exists()) {
   $aa->execute([$staffId, $month]);
   foreach ($aa->fetchAll() as $r) { $attByDate[$r['work_date']] = $r; }
 }
+// シフト日＋打刻日（シフトなしで打刻した日も含む）を日付順に統合
+$shiftByDate = [];
+foreach ($mShifts as $sd) { $shiftByDate[$sd['work_date']][] = $sd; }
+$allDates = array_unique(array_merge(array_keys($shiftByDate), array_keys($attByDate)));
+sort($allDates);
+$rows = [];
+foreach ($allDates as $d) {
+  if (!empty($shiftByDate[$d])) {
+    foreach ($shiftByDate[$d] as $i => $sd) {
+      // 打刻は1日1行のため、最初のシフト行にだけ紐付ける
+      $rows[] = ['date' => $d, 'shift' => $sd, 'att' => ($i === 0 ? ($attByDate[$d] ?? null) : null)];
+    }
+  } else {
+    $rows[] = ['date' => $d, 'shift' => null, 'att' => $attByDate[$d] ?? null];
+  }
+}
 
 function flag_badges($flags) {
   if (!$flags) return '<span class="badge bg-success">OK</span>';
@@ -101,15 +119,20 @@ render_header('打刻', $user, 'punch.php');
       <div class="alert alert-warning">打刻はまだ利用できません（<code>migrations/014_attendance.sql</code> 未適用）。</div>
     <?php endif; ?>
     <?php if ($flash): ?><div class="alert alert-success py-2"><?= h($flash) ?></div><?php endif; ?>
+    <?php if ($warn): ?><div class="alert alert-warning py-2"><?= h($warn) ?></div><?php endif; ?>
     <?php if ($err): ?><div class="alert alert-danger py-2"><?= h($err) ?></div><?php endif; ?>
 
     <div class="card shadow-sm mb-4">
       <div class="card-header"><?= h(date('Y-m-d (')) . jp_weekdays()[date('w')] . ')' ?> の打刻</div>
       <div class="card-body">
-        <?php if (!$todayShift): ?>
-          <p class="text-muted mb-0">本日は確定シフトがありません。打刻が必要な場合は管理者にご確認ください。</p>
+        <?php if (!$rooms): ?>
+          <div class="alert alert-warning mb-0">配属教室が未設定のため打刻できません。ColorHRMの講師詳細で配属教室を設定してください。</div>
         <?php else: ?>
-          <p class="small text-muted mb-2">本日のシフト：<strong><?= h(hm($todayShift['start_time'])) ?>〜<?= h(hm($todayShift['end_time'])) ?></strong><?php if (!empty($todayShift['room'])): ?> <span class="badge bg-secondary"><?= h($todayShift['room']) ?></span><?php endif; ?></p>
+          <?php if (!$todayShift): ?>
+            <p class="small text-warning-emphasis mb-2">本日は確定シフトがありません。<strong>シフトなしでも打刻できます</strong>（判定は「シフトなし」になります）。</p>
+          <?php else: ?>
+            <p class="small text-muted mb-2">本日のシフト：<strong><?= h(hm($todayShift['start_time'])) ?>〜<?= h(hm($todayShift['end_time'])) ?></strong><?php if (!empty($todayShift['room'])): ?> <span class="badge bg-secondary"><?= h($todayShift['room']) ?></span><?php endif; ?></p>
+          <?php endif; ?>
           <div class="row g-3">
             <div class="col-md-6">
               <div class="border rounded p-3">
@@ -148,7 +171,6 @@ render_header('打刻', $user, 'punch.php');
               </div>
             </div>
           </div>
-          <?php if (!$rooms): ?><div class="small text-danger mt-2">※ 配属教室が未設定です（ColorHRMの講師詳細で設定してください）。</div><?php endif; ?>
         <?php endif; ?>
       </div>
     </div>
@@ -166,17 +188,18 @@ render_header('打刻', $user, 'punch.php');
         <table class="table table-sm align-middle mb-0">
           <thead class="table-light"><tr><th>日付</th><th>教室</th><th>シフト</th><th>出勤</th><th>退勤</th><th>判定</th></tr></thead>
           <tbody>
-            <?php foreach ($mShifts as $sd): $att = $attByDate[$sd['work_date']] ?? null; $flags = attendance_flags($sd['start_time'], $sd['end_time'], $att, $sd['work_date']); ?>
+            <?php foreach ($rows as $row): $sd = $row['shift']; $att = $row['att']; ?>
+              <?php $flags = $sd ? attendance_flags($sd['start_time'], $sd['end_time'], $att, $row['date']) : null; ?>
               <tr>
-                <td><?= h($sd['work_date']) ?></td>
-                <td class="small"><?= h($sd['room'] ?? '') ?: '—' ?></td>
-                <td class="small"><?= h(hm($sd['start_time'])) ?>〜<?= h(hm($sd['end_time'])) ?></td>
+                <td><?= h($row['date']) ?></td>
+                <td class="small"><?= h(($sd['room'] ?? '') ?: ($att['in_room'] ?? '')) ?: '—' ?></td>
+                <td class="small"><?= $sd ? h(hm($sd['start_time'])) . '〜' . h(hm($sd['end_time'])) : '<span class="text-muted">—</span>' ?></td>
                 <td class="small"><?= $att && !empty($att['clock_in']) ? h(hm($att['clock_in'])) . '（' . h($att['in_room']) . '）' : '—' ?></td>
                 <td class="small"><?= $att && !empty($att['clock_out']) ? h(hm($att['clock_out'])) . '（' . h($att['out_room']) . '）' : '—' ?></td>
-                <td><?= flag_badges($flags) ?></td>
+                <td><?= $sd ? flag_badges($flags) : '<span class="badge bg-secondary">シフトなし</span>' ?></td>
               </tr>
             <?php endforeach; ?>
-            <?php if (!$mShifts): ?><tr><td colspan="6" class="text-center text-muted py-3">この月の確定シフトはありません。</td></tr><?php endif; ?>
+            <?php if (!$rows): ?><tr><td colspan="6" class="text-center text-muted py-3">この月の確定シフト・打刻はありません。</td></tr><?php endif; ?>
           </tbody>
         </table>
       </div>
