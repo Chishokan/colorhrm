@@ -70,7 +70,7 @@ render_header('研修管理', $user, 'training.php');
     <?php
       $sql = "SELECT tp.id, tp.declared_at, tp.memo, tp.evidence_file,
                      s.id AS staff_id, s.name AS staff_name,
-                     ti.item_name, ti.department, ti.target_color, ti.is_required
+                     ti.item_name, ti.department, ti.target_color, ti.is_required, ti.type
               FROM training_progress tp
               JOIN staff s          ON s.id = tp.staff_id
               JOIN training_items ti ON ti.id = tp.training_item_id
@@ -97,6 +97,7 @@ render_header('研修管理', $user, 'training.php');
                 <td><a href="training.php?staff_id=<?= (int)$p['staff_id'] ?>"><?= h($p['staff_name']) ?></a></td>
                 <td>
                   <?= h($p['item_name']) ?>
+                  <span class="badge bg-light text-dark border"><?= h(training_type_label($p['type'] ?? '')) ?></span>
                   <?= $p['is_required'] ? ' <span class="badge bg-dark">必須</span>' : '' ?>
                 </td>
                 <td class="small text-muted">
@@ -187,7 +188,7 @@ render_header('研修管理', $user, 'training.php');
               <?php $status = $it['status'] ?: '未着手'; ?>
               <tr>
                 <td class="small text-muted"><?= h($it['department'] ?: '共通') ?></td>
-                <td><?= h($it['item_name']) ?></td>
+                <td><?= h($it['item_name']) ?> <span class="badge bg-light text-dark border"><?= h(training_type_label($it['type'] ?? '')) ?></span></td>
                 <td><?= $it['is_required'] ? '<span class="badge bg-dark">必須</span>' : '<span class="text-muted small">任意</span>' ?></td>
                 <td>
                   <form method="post" class="d-inline-flex gap-1">
