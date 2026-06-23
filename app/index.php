@@ -2,7 +2,11 @@
 require __DIR__ . '/auth.php';
 require __DIR__ . '/helpers.php';
 require_login();
-require_staff_list_access();
+// 講師一覧を閲覧できないユーザー（講師など）はマイページへ直接遷移
+if (!can_view_staff_list(current_user())) {
+  header('Location: mypage.php');
+  exit;
+}
 $user = current_user();
 
 $t0 = microtime(true);
