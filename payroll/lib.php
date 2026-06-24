@@ -98,6 +98,7 @@ function nav_links_for($user) {
     $links['punch.php'] = '打刻';
     $links['shifts.php'] = 'シフト可能登録';
     $links['payslips.php'] = '給与明細';
+    $links['help.php'] = 'ヘルプ';
   }
   if ($role === 'admin' || $role === 'staff') {
     $links['index.php']        = 'ダッシュボード';
@@ -123,6 +124,7 @@ function nav_groups_for($user) {
   $pay = ['payroll.php' => '給与計算'];
   if ($role === 'admin') { $pay['rates.php'] = '時給表'; }
   $g[] = ['label' => '給与', 'items' => $pay];
+  $g[] = ['label' => 'サポート', 'items' => ['help.php' => 'ヘルプ・使い方']];
   return $g;
 }
 

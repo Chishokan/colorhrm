@@ -426,6 +426,7 @@ function nav_groups_for($user) {
   if ($role === 'teacher') {
     $items = ['mypage.php' => 'マイページ'];
     if (can_view_staff_list($user)) { $items['index.php'] = '講師一覧'; }
+    $items['help.php'] = 'ヘルプ・使い方';
     $g[] = ['label' => '', 'items' => $items];
     return $g;
   }
@@ -446,6 +447,7 @@ function nav_groups_for($user) {
       ]];
       $g[] = ['label' => '管理', 'items' => ['users.php' => 'ユーザー管理']];
     }
+    $g[] = ['label' => 'サポート', 'items' => ['help.php' => 'ヘルプ・使い方']];
   }
   return $g;
 }
