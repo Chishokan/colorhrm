@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>Color HRM ／ 給与・シフト 利用マニュアル</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: "IPAGothic","IPA Gothic","Noto Sans CJK JP",sans-serif; color:#222; line-height:1.7; font-size:11pt; margin:0; }
+  .page { padding: 18mm 16mm; }
+  h1 { font-size: 22pt; margin:0 0 4mm; }
+  h2 { font-size: 15pt; border-bottom:2px solid #2e7d32; color:#2e7d32; padding-bottom:2mm; margin:10mm 0 4mm; page-break-after: avoid; }
+  h3 { font-size: 12.5pt; color:#1565c0; margin:6mm 0 2mm; page-break-after: avoid; }
+  h4 { font-size: 11pt; margin:4mm 0 1mm; }
+  p { margin:1.5mm 0; }
+  ul,ol { margin:1.5mm 0 3mm; padding-left:6mm; }
+  li { margin:0.8mm 0; }
+  code { background:#f1f1f1; padding:0 2px; border-radius:3px; font-family:monospace; font-size:10pt; }
+  .lead { color:#555; }
+  .tag { display:inline-block; border:1px solid #bbb; background:#f6f6f6; border-radius:4px; padding:0 6px; font-size:9.5pt; }
+  .b-green { background:#2e7d32; color:#fff; border-radius:4px; padding:0 6px; font-size:9.5pt; }
+  .b-yellow { background:#ffc107; color:#222; border-radius:4px; padding:0 6px; font-size:9.5pt; }
+  .b-red { background:#dc3545; color:#fff; border-radius:4px; padding:0 6px; font-size:9.5pt; }
+  .b-gray { background:#6c757d; color:#fff; border-radius:4px; padding:0 6px; font-size:9.5pt; }
+  .b-dark { background:#212529; color:#fff; border-radius:4px; padding:0 6px; font-size:9.5pt; }
+  .note { background:#f8f9fa; border:1px solid #e0e0e0; border-left:4px solid #2e7d32; padding:3mm 4mm; margin:3mm 0; border-radius:3px; }
+  .warn { background:#fff8e1; border:1px solid #ffe082; border-left:4px solid #ffb300; padding:3mm 4mm; margin:3mm 0; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; margin:3mm 0; font-size:10pt; }
+  th,td { border:1px solid #ccc; padding:2mm 3mm; text-align:left; vertical-align:top; }
+  th { background:#eef5ee; }
+  .cover { padding:55mm 16mm 0; text-align:center; }
+  .cover .sub { color:#555; font-size:13pt; margin-top:4mm; }
+  .cover .meta { margin-top:40mm; color:#777; font-size:10pt; }
+  .toc a { color:#222; text-decoration:none; }
+  .pagebreak { page-break-before: always; }
+  @page { size: A4; margin: 0; }
+</style>
+</head>
+<body>
+
+<!-- 表紙 -->
+<section class="cover">
+  <h1>Color HRM ／ 給与・シフト<br>利用マニュアル</h1>
+  <div class="sub">職員・スタッフ／講師　向け</div>
+  <div class="meta">
+    対象システム：ColorHRM（採用・育成）／ 給与・シフト<br>
+    ※ 画面はログインした権限（講師・スタッフ）に合わせて変わります。
+  </div>
+</section>
+
+<!-- 目次 -->
+<section class="page pagebreak toc">
+  <h2>目次</h2>
+  <ol>
+    <li>はじめに（システム構成）</li>
+    <li>共通操作（ログイン・パスワード・アプリの行き来・スマホ）</li>
+    <li>講師（teacher）向け
+      <ul>
+        <li>3.1 ColorHRM マイページ</li>
+        <li>3.2 給与・シフト（打刻・シフト可能登録・給与明細）</li>
+      </ul>
+    </li>
+    <li>職員・スタッフ（staff）向け
+      <ul>
+        <li>4.1 ColorHRM（ダッシュボード・講師管理・研修承認）</li>
+        <li>4.2 給与・シフト（シフト表・シフト管理・給与計算）</li>
+      </ul>
+    </li>
+    <li>困ったときは（FAQ）</li>
+  </ol>
+</section>
+
+<!-- 1. はじめに -->
+<section class="page pagebreak">
+  <h2>1. はじめに（システム構成）</h2>
+  <p>本システムは、ひとつのログインで使える <strong>2つのアプリ</strong> で構成されています。</p>
+  <table>
+    <tr><th>アプリ</th><th>役割</th><th>主な利用者</th></tr>
+    <tr><td><strong>ColorHRM</strong><br><code>/colorhrm/</code></td><td>採用・育成（研修の進捗・承認、講師情報、カラー制度 WHITE→GREEN→BLUE→YELLOW→RED）</td><td>講師・スタッフ・管理者</td></tr>
+    <tr><td><strong>給与・シフト</strong><br><code>/colorhrm-pay/</code></td><td>打刻・シフト・給与計算・給与明細</td><td>講師・スタッフ・管理者</td></tr>
+  </table>
+  <p>2つのアプリは、各画面の上部・メニューにある相互リンクで行き来できます。アカウント（ログインID・パスワード）は共通です。</p>
+  <div class="note">
+    <strong>権限について</strong><br>
+    ・<strong>講師（teacher）</strong>… 自分のマイページ・打刻・シフト・給与明細を利用します。<br>
+    ・<strong>スタッフ（staff）</strong>… 自分の<strong>担当教室</strong>の講師について、育成・研修承認・シフト・給与を管理します。<br>
+    ・<strong>管理者（admin）</strong>… すべての機能（マスター管理・ユーザー管理を含む）を利用できます。
+  </div>
+</section>
+
+<!-- 2. 共通 -->
+<section class="page pagebreak">
+  <h2>2. 共通操作</h2>
+
+  <h3>2.1 ログイン</h3>
+  <ol>
+    <li>ブラウザでアプリのURL（例：<code>https://chishokan.co.jp/colorhrm/</code>）を開きます。</li>
+    <li><strong>メールアドレス（ログインID）</strong>と<strong>パスワード</strong>を入力し、ログインします。</li>
+    <li>講師でログインすると自動的に<strong>マイページ</strong>が開きます。</li>
+  </ol>
+  <div class="note">ログインIDとパスワードは管理者から発行されます。不明な場合は管理者にお問い合わせください。</div>
+
+  <h3>2.2 2つのアプリの行き来</h3>
+  <p>ColorHRM 画面からは「💴 給与・シフト」、給与・シフト画面からは「🎓 ColorHRM」のリンクで移動できます。再ログインは不要です。</p>
+
+  <h3>2.3 スマートフォンでの利用</h3>
+  <p>スマホでも利用できます。スタッフ画面では左上の <strong>三本線（≡）</strong> をタップするとメニュー（サイドバー）が開きます。講師画面では上部にボタンが並びます。</p>
+
+  <h3>2.4 ログアウト</h3>
+  <p>共有端末を使う場合は、画面右上の「ログアウト」で必ずログアウトしてください。</p>
+
+  <h3>2.5 ヘルプ（アプリ内）</h3>
+  <p>各アプリのメニューにある <span class="tag">ヘルプ・使い方</span> から、いつでも最新の操作説明を確認できます。</p>
+</section>
+
+<!-- 3. 講師 -->
+<section class="page pagebreak">
+  <h2>3. 講師（teacher）向け</h2>
+
+  <h3>3.1 ColorHRM マイページ</h3>
+  <p>ログイン後の最初の画面です。次のことができます。</p>
+  <ul>
+    <li>自分の<strong>現カラー／育成目標カラー</strong>と達成率の確認</li>
+    <li><strong>研修進捗</strong>の確認と提出・報告</li>
+    <li><strong>顔写真</strong>の登録</li>
+    <li>管理者からの<strong>質問への回答</strong></li>
+  </ul>
+
+  <h4>研修進捗の進め方</h4>
+  <p>研修項目には種別タグが付いています。種別ごとに操作が異なります。</p>
+  <table>
+    <tr><th>種別</th><th>操作</th></tr>
+    <tr><td><span class="tag">テスト</span> <span class="tag">OJT</span></td>
+        <td>テスト結果・OJT記録の<strong>写真</strong>を選び、<span class="b-green">写真提出</span>（OJTは <span class="b-green">OJT写真提出</span>）を押す。JPG/PNG・上限8MB。</td></tr>
+    <tr><td><span class="tag">研修</span></td>
+        <td>LINE WORKS にリフレクションを投稿してから <span class="b-green">投稿済み</span> を押す（写真は不要）。</td></tr>
+  </table>
+  <h4>ステータスの流れ</h4>
+  <p><span class="b-gray">未着手</span> →（提出・報告）→ <span class="b-yellow">申告中</span>（承認待ち）→ 担当者が承認 → <span class="b-green">合格</span>／<span class="b-green">受講済</span></p>
+  <p><span class="b-red">差戻し</span>・<span class="b-red">不合格</span> になった場合は、内容を直してもう一度提出・報告してください。<span class="b-dark">必須</span> の項目はカラー昇格に必要です。<span class="tag">📺 教材</span> がある項目は、押すと動画・資料を確認できます。</p>
+
+  <h4>顔写真の登録／質問への回答</h4>
+  <ul>
+    <li>マイページ左上の写真欄からファイルを選び「写真を登録」（JPG/PNG・上限8MB）。</li>
+    <li>管理者からの質問はマイページ下部に表示されます。回答を入力して「保存」（後から修正可）。</li>
+  </ul>
+
+  <h3>3.2 給与・シフト</h3>
+
+  <h4>打刻（出勤・退勤）</h4>
+  <ol>
+    <li>メニューの黄色い <span class="b-yellow">打刻</span> を開きます。</li>
+    <li>「出勤」欄で<strong>出勤教室</strong>を選び <span class="b-green">出勤打刻</span>。</li>
+    <li>退勤時は「退勤」欄で<strong>退勤教室</strong>を選び <span class="b-red">退勤打刻</span>。</li>
+  </ol>
+  <p><strong>シフトがない日でも打刻できます。</strong>その場合は判定が <span class="b-gray">シフトなし</span> になります。</p>
+  <table>
+    <tr><th>判定</th><th>意味</th></tr>
+    <tr><td><span class="b-green">OK</span></td><td>問題なし</td></tr>
+    <tr><td><span class="b-red">遅刻</span></td><td>シフト開始より遅い出勤</td></tr>
+    <tr><td><span class="b-red">早退</span></td><td>シフト終了より早い退勤</td></tr>
+    <tr><td><span class="b-dark">欠勤</span></td><td>打刻なし</td></tr>
+    <tr><td><span class="b-gray">シフトなし</span></td><td>その日のシフトが無い</td></tr>
+  </table>
+  <div class="warn"><strong>配属教室</strong>が未設定だと打刻できません。教室が選べない場合は、管理者・スタッフに配属教室の設定を依頼してください。</div>
+
+  <h4>シフト可能登録</h4>
+  <ul>
+    <li><strong>入れる日だけ</strong>開始・終了の時間を入力します（空欄の日は申請しません）。</li>
+    <li>「↑ 上をコピー」で前の行の時間をコピーできます。</li>
+    <li>入力したら <span class="b-green">保存する</span> を押します。当月〜<strong>6か月先</strong>まで登録できます。</li>
+    <li>スタッフが<strong>確定</strong>した行は編集できなくなります（画面下部の一覧で確認）。</li>
+  </ul>
+
+  <h4>給与明細</h4>
+  <p>「給与明細」から発行済みの明細を確認し、<span class="b-green">PDFを開く</span> で表示・保存できます。金額は<strong>発行時点の確定シフト</strong>に基づきます。</p>
+</section>
+
+<!-- 4. スタッフ -->
+<section class="page pagebreak">
+  <h2>4. 職員・スタッフ（staff）向け</h2>
+  <div class="note">スタッフ権限では、<strong>自分の担当教室に配属された講師</strong>が表示・管理の対象になります（担当教室の設定は管理者が行います）。</div>
+
+  <h3>4.1 ColorHRM（採用・育成）</h3>
+
+  <h4>ダッシュボード</h4>
+  <ul>
+    <li><strong>研修 承認待ち（教室別）</strong>… 講師の申告を教室ごとに一覧。「承認へ」でその講師の研修管理に移動。</li>
+    <li><strong>育成サマリー</strong>… カラー別人数、目標期限超過・達成率の低い<strong>要注意リスト</strong>、教室×カラー分布。</li>
+  </ul>
+
+  <h4>講師一覧・講師の追加</h4>
+  <ul>
+    <li>「講師一覧」で在籍講師を確認。<span class="b-green">＋ 講師を追加</span> で新規登録し、続けて詳細を設定します。</li>
+    <li>講師名や「研修進捗」から、その講師の詳細・研修チェックリストへ移動できます。</li>
+  </ul>
+
+  <h4>講師詳細でできること</h4>
+  <ul>
+    <li>プロフィール編集（氏名・メール＝ログインID・部門・校舎・メンター 等）→「プロフィールを保存」</li>
+    <li><strong>配属教室</strong>の設定（<span class="b-red">打刻に必須</span>・複数選択可）</li>
+    <li>カラー昇格／退職・復職の切り替え／1on1 面談の記録</li>
+  </ul>
+
+  <h4>研修管理（承認の手順）</h4>
+  <ol>
+    <li>「研修管理」を開くと <strong>承認待ち</strong> の申告が一覧されます。</li>
+    <li>講師・項目・種別・メモ・写真（<span class="b-gray">写真</span> を押すと表示）を確認します。</li>
+    <li>結果（合格／受講済／不合格）を選び <span class="b-green">承認</span>。不備があれば <span class="tag">差戻し</span>。</li>
+  </ol>
+  <p>講師名を押すと進捗グリッドが開き、各項目のステータスを直接「更新」することもできます。</p>
+
+  <h3>4.2 給与・シフト</h3>
+  <p>左サイドメニューは <strong>ダッシュボード</strong>／<strong>シフト</strong>（シフト表・シフト管理）／<strong>給与</strong>（給与計算）に分かれています。</p>
+
+  <h4>ダッシュボード</h4>
+  <p>在籍講師数・給与計算対象数・<strong>当月の確定シフト</strong>（前月/翌月へ移動可）・講師別の時給を確認できます。</p>
+
+  <h4>シフト表</h4>
+  <p>教室を選ぶと、その教室の講師×日付で <span class="b-yellow">申請中</span> と <span class="b-green">確定</span> を一覧できます。</p>
+
+  <h4>シフト管理（確定の手順）</h4>
+  <ol>
+    <li><strong>申請中</strong>の各行で <strong>教室</strong> と <strong>授業（分）</strong> を入力し <span class="b-green">確定</span>（不要なら <span class="b-red">却下</span>）。</li>
+    <li>まとめて確定する場合は <span class="b-green">この月をまとめて確定</span>。</li>
+    <li>申請がないシフトは「確定シフトを直接追加」から登録。</li>
+    <li>確定シフトの一覧では、教室・時間・授業分の修正（「保存」）や削除ができます。</li>
+  </ol>
+  <p>講師は1日に複数の教室で勤務することがあります。日ごとに<strong>確定した教室</strong>が、その教室のシフト表・講師のマイページに反映されます。</p>
+
+  <h4>給与計算・明細発行</h4>
+  <ul>
+    <li>月を選ぶと、確定シフトと時給表から自動計算されます。</li>
+    <li><span class="b-green">発行</span>（または「全員に発行」）で明細を発行。</li>
+    <li><span class="b-gray">PDF</span> で明細PDFを確認、<span class="b-green">メール送信</span> で講師へ送付（PDF出力とメール送信は分かれています）。</li>
+    <li>CSVダウンロード／コピーで表計算ソフトに貼り付けできます。</li>
+  </ul>
+  <div class="note">
+    <strong>計算の考え方</strong>：授業給与＝授業分÷60×授業時給、運営給与＝運営分÷60×運営時給、交通費は勤務日数で算定。
+    金額のもとになる勤務時間は<strong>確定シフトの時間</strong>です（打刻の時刻は遅刻・早退・欠勤の判定にのみ使い、給与額には反映しません）。
+  </div>
+</section>
+
+<!-- 5. FAQ -->
+<section class="page pagebreak">
+  <h2>5. 困ったときは（FAQ）</h2>
+  <h4>Q. ログインできない／パスワードを忘れた</h4>
+  <p>管理者にお問い合わせください。パスワードの再発行ができます。</p>
+  <h4>Q. 打刻で教室が選べない</h4>
+  <p>配属教室が未設定です。スタッフ・管理者に、ColorHRMの講師詳細での<strong>配属教室</strong>の設定を依頼してください。</p>
+  <h4>Q.（スタッフ）担当の講師が表示されない</h4>
+  <p>その講師の<strong>配属教室</strong>と、あなたの<strong>担当教室</strong>が一致しているか管理者にご確認ください。</p>
+  <h4>Q. シフトを登録したのに給与に反映されない</h4>
+  <p>給与は<strong>確定</strong>したシフトから計算されます。スタッフがシフト管理で確定しているかご確認ください。</p>
+  <h4>Q. 研修を提出したのに合格にならない</h4>
+  <p>提出後は <span class="b-yellow">申告中</span>（承認待ち）です。スタッフ・管理者の承認をお待ちください。差戻しの場合は再提出してください。</p>
+  <div class="note">最新の操作説明は、各アプリのメニュー「ヘルプ・使い方」からも確認できます。</div>
+</section>
+
+</body>
+</html>
