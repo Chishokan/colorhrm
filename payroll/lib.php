@@ -388,6 +388,93 @@ function send_payslip_notice($toEmail, $toName, $month) {
   return (bool)$ok;
 }
 
+// ------------------------------------------------------------
+// シフト確定待ち（申請中シフト）の通知
+// ------------------------------------------------------------
+// 重複防止ログ表の有無（未マイグレーションでも画面が落ちないように）
+function shift_notify_table_exists() {
+  static $ok = null;
+  if ($ok === null) {
+    try { db()->query("SELECT 1 FROM shift_notify_log LIMIT 1"); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+  }
+  return $ok;
+}
+
+// 申請中（確定待ち）シフトを講師ごとに集計。
+//   返り値: [ ['staff_id'=>, 'name'=>, 'classrooms'=>, 'cnt'=>, 'mind'=>], ... ]（講師名順）
+function pending_shift_summary() {
+  try {
+    return db()->query(
+      "SELECT a.staff_id, s.name, s.classrooms, COUNT(*) cnt, MIN(a.work_date) mind
+         FROM shift_applications a JOIN staff s ON s.id = a.staff_id
+        WHERE a.status = '申請中'
+        GROUP BY a.staff_id, s.name, s.classrooms
+        ORDER BY s.name")->fetchAll();
+  } catch (Throwable $e) { return []; }
+}
+
+// 確定待ちのダイジェストを担当スタッフ（staff/admin）へ1日1回メール。
+//   重複防止に shift_notify_log(notify_date,kind) の UNIQUE + INSERT IGNORE を使用。
+//   admin は全件、staff は担当教室（users.classrooms）と講師の配属教室の積集合のみ。
+function maybe_send_pending_shift_digest() {
+  if (!config_value('mail_enabled', true)) return;
+  if (!shift_notify_table_exists()) return;
+  if (trim((string)config_value('mail_from', '')) === '') return;
+
+  $pending = pending_shift_summary();
+  if (!$pending) return; // 送るものが無い日はガードを立てない（後で発生したら翌日通知）
+
+  // 当日まだ送っていなければ rowCount=1。同時アクセスでも UNIQUE で1通だけ。
+  try {
+    $ins = db()->prepare("INSERT IGNORE INTO shift_notify_log (tenant_id, notify_date, kind) VALUES (1, ?, 'pending_shift')");
+    $ins->execute([date('Y-m-d')]);
+    if ($ins->rowCount() === 0) return; // 本日分は送信済み
+  } catch (Throwable $e) { return; }
+
+  try { $users = db()->query("SELECT email, display_name, role, classrooms FROM users WHERE is_active=1 AND role IN ('staff','admin')")->fetchAll(); }
+  catch (Throwable $e) { return; }
+
+  foreach ($users as $u) {
+    $email = trim((string)$u['email']);
+    if ($email === '' || strpos($email, '@') === false) continue;
+    if (strtolower((string)substr(strrchr($email, '@'), 1)) === 'chishokan.local') continue; // 内部ダミー除外
+    if (($u['role'] ?? '') === 'admin') {
+      $mine = $pending;
+    } else {
+      $rooms = classroom_list($u['classrooms'] ?? '');
+      if (!$rooms) continue;
+      $mine = array_values(array_filter($pending, fn($p) => (bool)array_intersect($rooms, classroom_list($p['classrooms']))));
+    }
+    if (!$mine) continue;
+    send_pending_shift_notice($email, (string)($u['display_name'] ?? ''), $mine);
+  }
+}
+
+// 確定待ち通知メール（金額等は載せず、アプリで確定）。成功で true。
+function send_pending_shift_notice($toEmail, $toName, $rows) {
+  $toEmail = trim((string)$toEmail);
+  if (!config_value('mail_enabled', true) || $toEmail === '') return false;
+  $from = trim((string)config_value('mail_from', ''));
+  if ($from === '') return false;
+  $fromName = config_value('mail_from_name', '給与・シフト');
+  $url = payroll_base_url() . 'shifts_admin.php';
+  $lines = '';
+  foreach ($rows as $r) { $lines .= '・' . $r['name'] . '（' . (int)$r['cnt'] . '件）' . "\n"; }
+  $subject = '【給与・シフト】シフト確定待ちのお知らせ';
+  $body  = ($toName !== '' ? "{$toName} 様\n\n" : '')
+         . "講師から登録されたシフトで、確定待ち（申請中）があります。\n\n"
+         . $lines . "\n"
+         . "下記からログインし、「シフト管理」で確定してください。\n{$url}\n\n"
+         . "※ この通知は1日1回送信しています。\n※ このメールは送信専用です。\n\n智翔館グループ 給与・シフト";
+  $prevLang = mb_language(); $prevEnc = mb_internal_encoding();
+  mb_language('uni'); mb_internal_encoding('UTF-8');
+  $headers = 'From: ' . mb_encode_mimeheader($fromName) . " <{$from}>\r\nReply-To: {$from}\r\n";
+  $ok = @mb_send_mail($toEmail, $subject, $body, $headers, '-f' . $from);
+  mb_language($prevLang); mb_internal_encoding($prevEnc);
+  return (bool)$ok;
+}
+
 // 給与明細PDFを生成して文字列で返す（tFPDF＋IPAゴシック同梱）。
 function build_payslip_pdf($slip, $staffName) {
   require_once __DIR__ . '/tfpdf/tfpdf.php';
