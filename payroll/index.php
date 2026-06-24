@@ -126,9 +126,7 @@ try {
 } catch (Throwable $e) { $pendBy = []; }
 $pendTotal = array_sum(array_map(fn($p) => (int)$p['cnt'], $pendBy));
 $pendMonth = $pendBy ? substr((string)$pendBy[0]['mind'], 0, 7) : $month;
-
-// 確定待ちがあれば1日1回まとめてメール通知（その日最初の staff/admin アクセス時）
-maybe_send_pending_shift_digest();
+// ※ メール通知は cron_notify.php（13:00 定時実行）が担当。ここでは表示のみ。
 
 render_header('給与・シフト', $user, 'index.php');
 ?>
