@@ -452,6 +452,57 @@ function nav_groups_for($user) {
   return $g;
 }
 
+// アプリ内ブラウザ（LINE WORKS 等）検知バナー。標準ブラウザでは何も表示しない。
+//   ?inappdebug=1 を付けると強制表示＋UA を出す（検知調整用）。
+function inapp_browser_banner() {
+  ?>
+<script>
+(function(){
+  try{
+    var ua = navigator.userAgent || '';
+    var loc = window.location;
+    var debug = /[?&]inappdebug=1/.test(loc.search);
+    var isAndroid = /Android/i.test(ua), isIOS = /iPhone|iPad|iPod/i.test(ua);
+    var explicit = /(Line\/|LINEWORKS|LINE ?Works|NAVER\(inapp|FBAN|FBAV|FB_IAB|Instagram|MicroMessenger|KAKAOTALK)/i.test(ua);
+    var androidWV = isAndroid && /; wv\)|\bwv\b/.test(ua);
+    var iosWV = isIOS && /AppleWebKit/i.test(ua) && !/Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS/i.test(ua);
+    if (!(explicit || androidWV || iosWV || debug)) return;
+    if (document.getElementById('inapp-open-banner')) return;
+    function el(tag, css, html){ var e=document.createElement(tag); if(css)e.style.cssText=css; if(html!=null)e.innerHTML=html; return e; }
+    var bar = el('div','position:fixed;top:0;left:0;right:0;z-index:99999;background:#fff8e1;border-bottom:1px solid #ffe082;color:#5d4037;padding:10px 12px;font-size:13px;line-height:1.5;box-shadow:0 1px 4px rgba(0,0,0,.15)');
+    bar.id='inapp-open-banner';
+    var msg = el('div',null,'⚠ アプリ内ブラウザで開いています。表示が崩れる場合は標準ブラウザで開いてください。');
+    if(debug){ msg.appendChild(el('div','margin-top:4px;color:#999;word-break:break-all','UA: '+ua)); }
+    var btns = el('div','margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center');
+    var bOpen = el('button','background:#198754;color:#fff;border:0;border-radius:6px;padding:6px 12px;font-size:13px','ブラウザで開く');
+    var bCopy = el('button','background:#fff;color:#333;border:1px solid #bbb;border-radius:6px;padding:6px 12px;font-size:13px','URLをコピー');
+    var bClose = el('button','margin-left:auto;background:transparent;border:0;color:#888;font-size:18px;line-height:1;padding:0 6px','×');
+    var tip = el('div','display:none;margin-top:6px;color:#8d6e63','開かない場合は、画面右上の「︙」や共有アイコンから「ブラウザで開く／既定のブラウザで開く」を選んでください。');
+    function setPad(){ try{ document.body.style.paddingTop = bar.offsetHeight + 'px'; }catch(e){} }
+    bOpen.onclick=function(){
+      var scheme=(loc.protocol||'https:').replace(':','');
+      var path=loc.pathname+loc.search;
+      if(isAndroid){ window.location.href='intent://'+loc.host+path+'#Intent;scheme='+scheme+';end'; }
+      else if(isIOS){ window.location.href='googlechrome'+(scheme==='https'?'s':'')+'://'+loc.host+path; }
+      tip.style.display='block'; setPad();
+    };
+    bCopy.onclick=function(){
+      var url=loc.href;
+      var done=function(){ bCopy.textContent='コピー済み'; setTimeout(function(){bCopy.textContent='URLをコピー';},1500); };
+      if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(done,function(){window.prompt('URLをコピーしてください', url);}); }
+      else { window.prompt('URLをコピーしてください', url); }
+    };
+    bClose.onclick=function(){ bar.parentNode&&bar.parentNode.removeChild(bar); document.body.style.paddingTop=''; };
+    btns.appendChild(bOpen); btns.appendChild(bCopy); btns.appendChild(bClose);
+    bar.appendChild(msg); bar.appendChild(btns); bar.appendChild(tip);
+    var attach=function(){ document.body.insertBefore(bar, document.body.firstChild); setPad(); };
+    if(document.body) attach(); else document.addEventListener('DOMContentLoaded', attach);
+  }catch(e){}
+})();
+</script>
+  <?php
+}
+
 function render_header($title, $user, $active = '') {
   $role    = $user['role'] ?? '';
   $groups  = nav_groups_for($user);
@@ -464,6 +515,7 @@ function render_header($title, $user, $active = '') {
   echo '<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" defer></script>';
   echo '<style>@media(min-width:992px){.chrm-sidebar{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto}}</style>';
   echo '</head><body class="bg-light">';
+  inapp_browser_banner();
   // 上部バー
   echo '<nav class="navbar navbar-dark bg-dark px-3">';
   echo '<button class="navbar-toggler d-lg-none border-0 me-2 p-1" type="button" data-bs-toggle="offcanvas" data-bs-target="#chrmSidebar" aria-label="メニュー"><span class="navbar-toggler-icon"></span></button>';
