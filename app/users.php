@@ -42,7 +42,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $vals = [$email, $hash, $role, $sid, $display, 1];
         if (isset(users_columns()['classrooms'])) {
           $cols[] = 'classrooms';
-          $vals[] = implode(',', array_values(array_filter(array_map('trim', (array)($_POST['classroom'] ?? [])), fn($v) => $v !== '')));
+          // 担当教室は staff の管理範囲。teacher では持たせない。
+          $vals[] = ($role === 'teacher') ? '' : implode(',', array_values(array_filter(array_map('trim', (array)($_POST['classroom'] ?? [])), fn($v) => $v !== '')));
         }
         if (isset(users_columns()['plain_password'])) { $cols[] = 'plain_password'; $vals[] = $pw; }
         $ph = implode(',', array_fill(0, count($cols), '?'));
@@ -68,7 +69,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           ->execute([$role, $sid, $active, $id]);
     }
     if (isset(users_columns()['classrooms'])) {
-      $cr = implode(',', array_values(array_filter(array_map('trim', (array)($_POST['classroom'] ?? [])), fn($v) => $v !== '')));
+      // 担当教室は staff の管理範囲。teacher では持たせない。
+      $cr = ($role === 'teacher') ? '' : implode(',', array_values(array_filter(array_map('trim', (array)($_POST['classroom'] ?? [])), fn($v) => $v !== '')));
       db()->prepare("UPDATE users SET classrooms = ? WHERE id = ?")->execute([$cr, $id]);
     }
     // メール・表示名の編集
@@ -141,7 +143,7 @@ render_header('ユーザー管理', $user, 'users.php');
           </div>
           <div class="col-md-2">
             <label class="form-label small mb-0">ロール</label>
-            <select name="role" class="form-select form-select-sm">
+            <select name="role" class="form-select form-select-sm js-role">
               <?php foreach ($roles as $r): ?><option value="<?= h($r) ?>"><?= h($r) ?></option><?php endforeach; ?>
             </select>
           </div>
@@ -159,7 +161,7 @@ render_header('ユーザー管理', $user, 'users.php');
             <input name="password" type="text" class="form-control form-control-sm" required>
           </div>
           <?php if (isset(users_columns()['classrooms']) && classrooms_active()): ?>
-          <div class="col-12">
+          <div class="col-12 js-classrooms">
             <label class="form-label small mb-0">担当教室（staff の管理範囲・複数可）</label>
             <div class="d-flex flex-wrap gap-3">
               <?php foreach (classrooms_active() as $c): ?>
@@ -200,7 +202,7 @@ render_header('ユーザー管理', $user, 'users.php');
                     <input name="display_name" value="<?= h($u['display_name']) ?>" class="form-control form-control-sm" placeholder="表示名" style="min-width:120px">
                   </div>
                   <div class="col-auto">
-                    <select name="role" class="form-select form-select-sm">
+                    <select name="role" class="form-select form-select-sm js-role">
                       <?php foreach ($roles as $r): ?>
                         <option value="<?= h($r) ?>" <?= $u['role'] === $r ? 'selected' : '' ?>><?= h($r) ?></option>
                       <?php endforeach; ?>
@@ -229,7 +231,7 @@ render_header('ユーザー管理', $user, 'users.php');
                   </div>
                   <?php endif; ?>
                   <?php if (isset(users_columns()['classrooms']) && classrooms_active()): $ucr = classroom_list($u['classrooms'] ?? ''); ?>
-                  <div class="col-12 mt-1">
+                  <div class="col-12 mt-1 js-classrooms"<?= ($u['role'] ?? '') === 'teacher' ? ' style="display:none"' : '' ?>>
                     <span class="small text-muted me-1">担当教室:</span>
                     <?php foreach (classrooms_active() as $c): ?>
                       <span class="form-check form-check-inline"><input class="form-check-input" type="checkbox" name="classroom[]" value="<?= h($c) ?>" id="uc<?= (int)$u['id'] ?>_<?= h($c) ?>" <?= in_array($c, $ucr, true) ? 'checked' : '' ?>><label class="form-check-label small" for="uc<?= (int)$u['id'] ?>_<?= h($c) ?>"><?= h($c) ?></label></span>
@@ -260,4 +262,19 @@ render_header('ユーザー管理', $user, 'users.php');
       ※ セキュリティTODO: 初期管理者 <code>admin@chishokan.local</code> のパスワードを <code>admin1234</code> から変更してください。
     </p>
   </div>
+  <script>
+    // 担当教室は staff の管理範囲設定。teacher ロールでは不要なので隠す。
+    (function () {
+      function sync(sel) {
+        var form = sel.closest('form');
+        if (!form) return;
+        var box = form.querySelector('.js-classrooms');
+        if (box) box.style.display = (sel.value === 'teacher') ? 'none' : '';
+      }
+      document.querySelectorAll('select.js-role').forEach(function (sel) {
+        sync(sel);
+        sel.addEventListener('change', function () { sync(sel); });
+      });
+    })();
+  </script>
 <?php render_footer(); ?>
