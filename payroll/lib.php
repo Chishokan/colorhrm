@@ -415,25 +415,32 @@ function pending_shift_summary() {
 }
 
 // 確定待ちのダイジェストを担当スタッフ（staff/admin）へ1日1回メール。
-//   重複防止に shift_notify_log(notify_date,kind) の UNIQUE + INSERT IGNORE を使用。
+//   通常は cron_notify.php（13:00 定時）から呼ぶ。重複防止に
+//   shift_notify_log(notify_date,kind) の UNIQUE + INSERT IGNORE を使用。
 //   admin は全件、staff は担当教室（users.classrooms）と講師の配属教室の積集合のみ。
-function maybe_send_pending_shift_digest() {
-  if (!config_value('mail_enabled', true)) return;
-  if (!shift_notify_table_exists()) return;
-  if (trim((string)config_value('mail_from', '')) === '') return;
+//   $force=true でガードを無視して送信（手動テスト用）。
+//   返り値: ['sent'=>送信数, 'recipients'=>対象者数, 'pending_staff'=>確定待ち講師数, 'skipped'=>理由]
+function maybe_send_pending_shift_digest($force = false) {
+  $res = ['sent' => 0, 'recipients' => 0, 'pending_staff' => 0, 'skipped' => ''];
+  if (!config_value('mail_enabled', true)) { $res['skipped'] = 'mail_disabled'; return $res; }
+  if (!shift_notify_table_exists()) { $res['skipped'] = 'no_log_table'; return $res; }
+  if (trim((string)config_value('mail_from', '')) === '') { $res['skipped'] = 'no_mail_from'; return $res; }
 
   $pending = pending_shift_summary();
-  if (!$pending) return; // 送るものが無い日はガードを立てない（後で発生したら翌日通知）
+  $res['pending_staff'] = count($pending);
+  if (!$pending) { $res['skipped'] = 'no_pending'; return $res; } // 送るものが無い日はガードを立てない
 
-  // 当日まだ送っていなければ rowCount=1。同時アクセスでも UNIQUE で1通だけ。
-  try {
-    $ins = db()->prepare("INSERT IGNORE INTO shift_notify_log (tenant_id, notify_date, kind) VALUES (1, ?, 'pending_shift')");
-    $ins->execute([date('Y-m-d')]);
-    if ($ins->rowCount() === 0) return; // 本日分は送信済み
-  } catch (Throwable $e) { return; }
+  if (!$force) {
+    // 当日まだ送っていなければ rowCount=1。同時実行でも UNIQUE で1通だけ。
+    try {
+      $ins = db()->prepare("INSERT IGNORE INTO shift_notify_log (tenant_id, notify_date, kind) VALUES (1, ?, 'pending_shift')");
+      $ins->execute([date('Y-m-d')]);
+      if ($ins->rowCount() === 0) { $res['skipped'] = 'already_sent_today'; return $res; }
+    } catch (Throwable $e) { $res['skipped'] = 'log_error'; return $res; }
+  }
 
   try { $users = db()->query("SELECT email, display_name, role, classrooms FROM users WHERE is_active=1 AND role IN ('staff','admin')")->fetchAll(); }
-  catch (Throwable $e) { return; }
+  catch (Throwable $e) { $res['skipped'] = 'users_error'; return $res; }
 
   foreach ($users as $u) {
     $email = trim((string)$u['email']);
@@ -447,8 +454,10 @@ function maybe_send_pending_shift_digest() {
       $mine = array_values(array_filter($pending, fn($p) => (bool)array_intersect($rooms, classroom_list($p['classrooms']))));
     }
     if (!$mine) continue;
-    send_pending_shift_notice($email, (string)($u['display_name'] ?? ''), $mine);
+    $res['recipients']++;
+    if (send_pending_shift_notice($email, (string)($u['display_name'] ?? ''), $mine)) { $res['sent']++; }
   }
+  return $res;
 }
 
 // 確定待ち通知メール（金額等は載せず、アプリで確定）。成功で true。
