@@ -21,6 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">
+  <?php inapp_browser_banner(); ?>
   <div class="container" style="max-width:380px;margin-top:12vh">
     <div class="card shadow-sm">
       <div class="card-body p-4">
