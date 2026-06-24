@@ -26,4 +26,10 @@ return [
   'mail_from_name' => '給与・シフト（智翔館）',
   // 通知メール内のリンク基点（給与アプリのURL）。空なら実行URLから自動生成。
   'app_base_url'   => 'https://chishokan.co.jp/colorhrm-pay/',
+
+  // シフト確定待ちの定時通知（cron_notify.php）。
+  //   XServer の Cron で CLI 実行する場合は不要（サーバー上の実行は信頼）。
+  //   URL（curl 等）から叩く場合のみ、ここにランダムな文字列を設定し、
+  //   ...cron_notify.php?token=（この値） でアクセスする。
+  'cron_token'     => '',
 ];
