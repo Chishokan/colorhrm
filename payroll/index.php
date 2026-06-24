@@ -117,10 +117,36 @@ $mdays = $mdays->fetchAll();
 $names = [];
 foreach (db()->query("SELECT id, name FROM staff")->fetchAll() as $s) { $names[(int)$s['id']] = $s['name']; }
 
+// シフト確定待ち（申請中）を講師ごとに集計（担当教室スコープ・全期間）
+$pendBy = [];
+try {
+  $pq = db()->prepare("SELECT staff_id, COUNT(*) cnt, MIN(work_date) mind FROM shift_applications WHERE status='申請中'" . $scopeSql . " GROUP BY staff_id ORDER BY MIN(work_date)");
+  $pq->execute($scopeParams);
+  $pendBy = $pq->fetchAll();
+} catch (Throwable $e) { $pendBy = []; }
+$pendTotal = array_sum(array_map(fn($p) => (int)$p['cnt'], $pendBy));
+$pendMonth = $pendBy ? substr((string)$pendBy[0]['mind'], 0, 7) : $month;
+
+// 確定待ちがあれば1日1回まとめてメール通知（その日最初の staff/admin アクセス時）
+maybe_send_pending_shift_digest();
+
 render_header('給与・シフト', $user, 'index.php');
 ?>
   <div class="container py-4">
     <h4 class="mb-3">給与・シフト ダッシュボード</h4>
+
+    <?php if ($pendBy): ?>
+    <div class="alert alert-warning shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <strong>⚠ シフト確定待ちがあります（<?= $pendTotal ?>件）</strong>
+        <div class="small mt-1">
+          <?= implode('、', array_map(fn($p) => h($names[(int)$p['staff_id']] ?? ('#' . $p['staff_id'])) . '（' . (int)$p['cnt'] . '件）', $pendBy)) ?>
+          からのシフト確定待ちがあります。
+        </div>
+      </div>
+      <a href="shifts_admin.php?m=<?= h($pendMonth) ?>" class="btn btn-sm btn-warning text-nowrap">シフト管理で確定</a>
+    </div>
+    <?php endif; ?>
 
     <div class="row g-3 mb-3">
       <div class="col-6 col-md-3"><div class="card shadow-sm"><div class="card-body py-3">
