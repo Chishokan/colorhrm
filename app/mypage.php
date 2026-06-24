@@ -229,7 +229,7 @@ render_header('マイページ', $user, 'mypage.php');
 
       <!-- 研修進捗 -->
       <h5 class="mb-2">研修進捗
-        <small class="text-muted">（育成目標カラー: <?= h($targetColor) ?>）</small>
+        <small class="text-muted">（目標カラー: <?= h($targetColor) ?>）</small>
       </h5>
       <div class="small text-muted mb-2">
         ※ <span class="badge bg-light text-dark border">テスト</span>はテスト結果、<span class="badge bg-light text-dark border">OJT</span>はOJT記録の<strong>写真</strong>を投稿してください（JPG/PNG・上限8MB）。
