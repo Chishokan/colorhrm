@@ -69,19 +69,9 @@ if ($role === 'teacher') {
     $q->execute([$staffId, $month]);
     $days = $q->fetchAll();
   }
-  $colorhrm = config_value('colorhrm_url', '/colorhrm/');
   render_header('給与・シフト', $user, 'index.php');
   ?>
   <div class="container py-4">
-    <div class="card shadow-sm mb-3">
-      <div class="card-body d-flex flex-wrap gap-2">
-        <a href="punch.php" class="btn btn-sm btn-success">打刻</a>
-        <a href="shifts.php" class="btn btn-sm btn-outline-success">シフト可能登録</a>
-        <a href="payslips.php" class="btn btn-sm btn-outline-success">給与明細</a>
-        <a href="<?= h($colorhrm) ?>mypage.php" class="btn btn-sm btn-outline-secondary">マイページ（ColorHRM）へ</a>
-      </div>
-    </div>
-
     <div class="card shadow-sm">
       <div class="card-header d-flex justify-content-between align-items-center">
         <span>当月の確定シフト（<?= h($month) ?>）</span>
