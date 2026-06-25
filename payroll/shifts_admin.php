@@ -54,12 +54,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $a->execute([$appId]);
     $a = $a->fetch();
     if ($a && $inScope($a['staff_id'])) {
-      $tot = shift_minutes($a['start_time'], $a['end_time']);
+      // 確定する時間（申請＝可能時間を既定とし、入力があればその時間で確定）
+      $st = trim($_POST['start_time'] ?? '');
+      $et = trim($_POST['end_time'] ?? '');
+      $stN = preg_match('/^\d{1,2}:\d{2}$/', $st) ? $st : hm($a['start_time']);
+      $etN = preg_match('/^\d{1,2}:\d{2}$/', $et) ? $et : hm($a['end_time']);
+      $tot = shift_minutes($stN, $etN);
+      if ($tot <= 0) { // 不正な時間は申請時間にフォールバック
+        $stN = hm($a['start_time']); $etN = hm($a['end_time']);
+        $tot = shift_minutes($a['start_time'], $a['end_time']);
+      }
       if ($cls > $tot) $cls = $tot;
       $room = $normRoom($a['staff_id'], $_POST['room'] ?? '');
-      insert_shift_day($a['staff_id'], $a['work_date'], $a['start_time'], $a['end_time'], $cls, $a['note'], $appId, $room, $hasRoom);
+      insert_shift_day($a['staff_id'], $a['work_date'], $stN, $etN, $cls, $a['note'], $appId, $room, $hasRoom);
       db()->prepare("UPDATE shift_applications SET status='確定' WHERE id=?")->execute([$appId]);
-      $flash = $room !== '' ? "シフトを確定しました（教室：{$room}）。" : 'シフトを確定しました。';
+      $flash = $room !== '' ? "シフトを確定しました（{$stN}〜{$etN}／教室：{$room}）。" : "シフトを確定しました（{$stN}〜{$etN}）。";
     }
   } elseif ($action === 'reject') {
     $rid = (int)($_POST['id'] ?? 0);
@@ -147,6 +156,10 @@ if ($scope !== null) { $staffOpts = array_values(array_filter($staffOpts, fn($s)
 $pending = db()->prepare("SELECT * FROM shift_applications WHERE status='申請中' AND DATE_FORMAT(work_date,'%Y-%m')=?" . $scopeSql . " ORDER BY work_date, start_time");
 $pending->execute(array_merge([$month], $scopeParams));
 $pending = $pending->fetchAll();
+// フィルタ用：申請中に含まれる講師（名前順）
+$pendStaff = [];
+foreach ($pending as $a) { $pendStaff[(int)$a['staff_id']] = $names[(int)$a['staff_id']] ?? ('#' . $a['staff_id']); }
+asort($pendStaff, SORT_FLAG_CASE | SORT_STRING);
 
 // 確定シフト（担当教室スコープ）
 $days = db()->prepare("SELECT * FROM shift_days WHERE DATE_FORMAT(work_date,'%Y-%m')=?" . $scopeSql . " ORDER BY work_date, staff_id, start_time");
@@ -184,9 +197,9 @@ render_header('シフト管理', $user, 'shifts_admin.php');
 
     <div class="card shadow-sm mb-3">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <span>申請中（<?= count($pending) ?>件）— 授業分を入れて「確定」</span>
+        <span>申請中（<?= count($pending) ?>件）— 時間・授業分を入れて「確定」</span>
         <?php if ($pending): ?>
-          <form method="post" onsubmit="return confirm('<?= h($month) ?> の申請 <?= count($pending) ?>件を授業分0でまとめて確定します。よろしいですか？（授業分は後で各行で入力できます）');">
+          <form method="post" onsubmit="return confirm('<?= h($month) ?> の申請 <?= count($pending) ?>件を申請時間・授業分0でまとめて確定します。よろしいですか？（時間・授業分は後で各行で調整できます）');">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="confirm_month">
             <input type="hidden" name="month" value="<?= h($month) ?>">
@@ -194,20 +207,42 @@ render_header('シフト管理', $user, 'shifts_admin.php');
           </form>
         <?php endif; ?>
       </div>
+      <?php if ($pending): ?>
+      <div class="card-body py-2 border-bottom bg-light">
+        <div class="row g-2 align-items-end">
+          <div class="col-auto">
+            <label class="form-label small mb-0" for="fStaff">講師で絞り込み</label>
+            <select id="fStaff" class="form-select form-select-sm" style="min-width:150px">
+              <option value="">（すべて）</option>
+              <?php foreach ($pendStaff as $sid => $nm): ?><option value="<?= (int)$sid ?>"><?= h($nm) ?></option><?php endforeach; ?>
+            </select>
+          </div>
+          <div class="col-auto">
+            <label class="form-label small mb-0" for="fDate">日付で絞り込み</label>
+            <input type="date" id="fDate" class="form-control form-control-sm" min="<?= h($month) ?>-01" max="<?= h(date('Y-m-t', strtotime($month . '-01'))) ?>">
+          </div>
+          <div class="col-auto"><button id="fClear" type="button" class="btn btn-sm btn-outline-secondary">クリア</button></div>
+          <div class="col-auto"><span id="fCount" class="small text-muted"></span></div>
+        </div>
+      </div>
+      <?php endif; ?>
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
-          <thead class="table-light"><tr><th>講師</th><th>日付</th><th>時間</th><th class="text-end">稼働</th><th>メモ</th><th style="width:210px">教室／授業(分)</th><th></th></tr></thead>
-          <tbody>
+          <thead class="table-light"><tr><th>講師</th><th>日付</th><th>申請時間</th><th class="text-end">稼働</th><th>メモ</th><th style="min-width:340px">確定 時間／教室／授業(分)</th><th></th></tr></thead>
+          <tbody id="pendingBody">
             <?php foreach ($pending as $a): $tot = shift_minutes($a['start_time'],$a['end_time']); ?>
-              <tr>
+              <tr data-staff="<?= (int)$a['staff_id'] ?>" data-date="<?= h($a['work_date']) ?>">
                 <td><?= h($names[(int)$a['staff_id']] ?? ('#'.$a['staff_id'])) ?></td>
                 <td><?= h($a['work_date']) ?></td>
                 <td><?= h(hm($a['start_time'])) ?>〜<?= h(hm($a['end_time'])) ?></td>
                 <td class="text-end"><?= h(fmt_hm($tot)) ?></td>
                 <td class="small text-muted"><?= h($a['note']) ?></td>
                 <td>
-                  <form method="post" class="d-flex gap-1" id="cf<?= (int)$a['id'] ?>">
+                  <form method="post" class="d-flex gap-1 flex-wrap align-items-center" id="cf<?= (int)$a['id'] ?>">
                     <?= csrf_field() ?><input type="hidden" name="action" value="confirm"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
+                    <input type="time" name="start_time" value="<?= h(hm($a['start_time'])) ?>" class="form-control form-control-sm" style="max-width:92px" title="確定 開始時刻">
+                    <span class="text-muted">〜</span>
+                    <input type="time" name="end_time" value="<?= h(hm($a['end_time'])) ?>" class="form-control form-control-sm" style="max-width:92px" title="確定 終了時刻">
                     <?php if ($hasRoom): $trs = $teacherRooms[(int)$a['staff_id']] ?? []; ?>
                       <select name="room" class="form-select form-select-sm" style="max-width:104px" title="確定する教室">
                         <?php foreach ($trs as $rm): ?><option value="<?= h($rm) ?>"><?= h($rm) ?></option><?php endforeach; ?>
@@ -227,6 +262,27 @@ render_header('シフト管理', $user, 'shifts_admin.php');
           </tbody>
         </table>
       </div>
+      <?php if ($pending): ?>
+      <script>
+        (function(){
+          var fs=document.getElementById('fStaff'), fd=document.getElementById('fDate'),
+              fc=document.getElementById('fClear'), cnt=document.getElementById('fCount'),
+              rows=[].slice.call(document.querySelectorAll('#pendingBody tr[data-staff]'));
+          function apply(){
+            var s=fs?fs.value:'', d=fd?fd.value:'', n=0;
+            rows.forEach(function(r){
+              var ok=(s===''||r.getAttribute('data-staff')===s)&&(d===''||r.getAttribute('data-date')===d);
+              r.style.display=ok?'':'none'; if(ok)n++;
+            });
+            if(cnt) cnt.textContent=(s||d)?('表示 '+n+' 件'):'';
+          }
+          fs&&fs.addEventListener('change',apply);
+          fd&&fd.addEventListener('input',apply);
+          fc&&fc.addEventListener('click',function(){ if(fs)fs.value=''; if(fd)fd.value=''; apply(); });
+          apply();
+        })();
+      </script>
+      <?php endif; ?>
     </div>
 
     <div class="card shadow-sm mb-3">
