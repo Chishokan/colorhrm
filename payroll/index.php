@@ -24,8 +24,9 @@ $month = valid_month($_GET['m'] ?? date('Y-m'));
 $prev  = date('Y-m', strtotime($month . '-01 -1 month'));
 $next  = date('Y-m', strtotime($month . '-01 +1 month'));
 
-// 確定シフト表（共通描画）
-function render_month_shifts($days, $hasRoom, $names = null) {
+// 確定シフト表（共通描画）。$attBy（[staff_id|date]=>打刻行）を渡すと 出勤/退勤/判定 列を追加。
+function render_month_shifts($days, $hasRoom, $names = null, $attBy = null) {
+  $cols = 5 + ($names !== null ? 1 : 0) + ($hasRoom ? 1 : 0) + ($attBy !== null ? 3 : 0);
   ?>
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0">
@@ -33,9 +34,11 @@ function render_month_shifts($days, $hasRoom, $names = null) {
         <?php if ($names !== null): ?><th>講師</th><?php endif; ?>
         <th>日付</th><?php if ($hasRoom): ?><th>教室</th><?php endif; ?><th>時間</th>
         <th class="text-end">稼働</th><th class="text-end">授業</th><th class="text-end">運営</th>
+        <?php if ($attBy !== null): ?><th>出勤</th><th>退勤</th><th>判定</th><?php endif; ?>
       </tr></thead>
       <tbody>
-        <?php $tt = 0; foreach ($days as $d): $tot = shift_minutes($d['start_time'], $d['end_time']); $cls = min((int)$d['class_minutes'], $tot); $tt += $tot; ?>
+        <?php $tt = 0; foreach ($days as $d): $tot = shift_minutes($d['start_time'], $d['end_time']); $cls = min((int)$d['class_minutes'], $tot); $tt += $tot;
+          $att = $attBy !== null ? ($attBy[$d['staff_id'] . '|' . $d['work_date']] ?? null) : null; ?>
           <tr>
             <?php if ($names !== null): ?><td><?= h($names[(int)$d['staff_id']] ?? ('#' . $d['staff_id'])) ?></td><?php endif; ?>
             <td class="small"><?= h($d['work_date']) ?></td>
@@ -44,9 +47,14 @@ function render_month_shifts($days, $hasRoom, $names = null) {
             <td class="text-end small"><?= h(fmt_hm($tot)) ?></td>
             <td class="text-end small"><?= h(fmt_hm($cls)) ?></td>
             <td class="text-end small"><?= h(fmt_hm($tot - $cls)) ?></td>
+            <?php if ($attBy !== null): ?>
+              <td class="small"><?= $att && !empty($att['clock_in']) ? h(hm($att['clock_in'])) : '—' ?></td>
+              <td class="small"><?= $att && !empty($att['clock_out']) ? h(hm($att['clock_out'])) : '—' ?></td>
+              <td><?= attendance_judgment_cell($d['start_time'], $d['end_time'], $att, $d['work_date']) ?></td>
+            <?php endif; ?>
           </tr>
         <?php endforeach; ?>
-        <?php if (!$days): ?><tr><td colspan="7" class="text-center text-muted py-3">この月の確定シフトはありません。</td></tr><?php endif; ?>
+        <?php if (!$days): ?><tr><td colspan="<?= $cols ?>" class="text-center text-muted py-3">この月の確定シフトはありません。</td></tr><?php endif; ?>
       </tbody>
     </table>
   </div>
@@ -63,11 +71,17 @@ function month_nav_html($month, $prev, $next) {
 // ============================== teacher ==============================
 if ($role === 'teacher') {
   $staffId = (int)($user['staff_id'] ?? 0);
-  $days = [];
+  $days = []; $attBy = [];
   if ($staffId) {
     $q = db()->prepare("SELECT * FROM shift_days WHERE staff_id=? AND DATE_FORMAT(work_date,'%Y-%m')=? ORDER BY work_date, start_time");
     $q->execute([$staffId, $month]);
     $days = $q->fetchAll();
+    // 自分の打刻（出退勤・判定の表示用）
+    if (attendance_table_exists()) {
+      $qa = db()->prepare("SELECT * FROM attendance WHERE staff_id=? AND DATE_FORMAT(work_date,'%Y-%m')=?");
+      $qa->execute([$staffId, $month]);
+      foreach ($qa->fetchAll() as $r) { $attBy[$r['staff_id'] . '|' . $r['work_date']] = $r; }
+    }
   }
   render_header('給与・シフト', $user, 'index.php');
   ?>
@@ -77,8 +91,9 @@ if ($role === 'teacher') {
         <span>当月の確定シフト（<?= h($month) ?>）</span>
         <?= month_nav_html($month, $prev, $next) ?>
       </div>
-      <?php render_month_shifts($days, $hasRoom); ?>
+      <?php render_month_shifts($days, $hasRoom, null, $attBy); ?>
     </div>
+    <p class="text-muted small mt-2">※「判定」は確定シフトと打刻の比較です（OK／遅刻／早退／欠勤）。打刻は「打刻」メニューから行えます。</p>
   </div>
   <?php
   render_footer();
@@ -132,7 +147,7 @@ render_header('給与・シフト', $user, 'index.php');
           からのシフト確定待ちがあります。
         </div>
       </div>
-      <a href="shifts_admin.php?m=<?= h($pendMonth) ?>" class="btn btn-sm btn-warning text-nowrap">シフト管理で確定</a>
+      <a href="shifts_admin.php?m=<?= h($pendMonth) ?>" class="btn btn-sm btn-warning text-nowrap">シフト申請・確定へ</a>
     </div>
     <?php endif; ?>
 
@@ -151,7 +166,7 @@ render_header('給与・シフト', $user, 'index.php');
         <span>当月の確定シフト（<?= h($month) ?>）<span class="text-muted small ms-1"><?= count($mdays) ?>件</span></span>
         <div class="d-flex gap-2">
           <?= month_nav_html($month, $prev, $next) ?>
-          <a href="shifts_admin.php?m=<?= h($month) ?>" class="btn btn-sm btn-outline-primary">シフト管理</a>
+          <a href="shifts_done.php?m=<?= h($month) ?>" class="btn btn-sm btn-outline-primary">打刻・確定シフト</a>
         </div>
       </div>
       <?php render_month_shifts($mdays, $hasRoom, $names); ?>

@@ -28,7 +28,7 @@ if ($room !== '') {
 $tids = array_keys($teachers);
 
 // 申請（申請中/確定）と確定シフトを月内で取得し、[staff_id][date] に整理
-$appBy = []; $dayBy = [];
+$appBy = []; $dayBy = []; $attBy = [];
 if ($tids) {
   $in = implode(',', array_fill(0, count($tids), '?'));
   $qa = db()->prepare("SELECT staff_id, work_date, start_time, end_time, status FROM shift_applications
@@ -39,6 +39,12 @@ if ($tids) {
                         WHERE DATE_FORMAT(work_date,'%Y-%m')=? AND staff_id IN ($in)");
   $qd->execute(array_merge([$month], $tids));
   foreach ($qd->fetchAll() as $r) { $dayBy[(int)$r['staff_id']][$r['work_date']] = $r; }
+  // 打刻（出退勤・判定の表示用）
+  if (attendance_table_exists()) {
+    $qt = db()->prepare("SELECT * FROM attendance WHERE DATE_FORMAT(work_date,'%Y-%m')=? AND staff_id IN ($in)");
+    $qt->execute(array_merge([$month], $tids));
+    foreach ($qt->fetchAll() as $r) { $attBy[(int)$r['staff_id']][$r['work_date']] = $r; }
+  }
 }
 
 $wd = jp_weekdays();
@@ -92,19 +98,29 @@ render_header('シフト表', $user, 'shifts_matrix.php');
                   <?php foreach ($teachers as $tid => $name): ?>
                     <?php
                       // 確定はその教室のみ（room未設定の旧データは全教室に表示）。申請中は配属の全教室に表示。
-                      $cell = ''; $cls = '';
+                      $cell = ''; $cls = ''; $confirmed = null;
                       $day = $dayBy[$tid][$date] ?? null;
                       if ($day) {
                         $rm = $day['room'] ?? '';
                         if ($rm === '' || $rm === $room) {
                           $cell = hm($day['start_time']) . '-' . hm($day['end_time']); $cls = 'bg-success text-white';
+                          $confirmed = $day;
                         }
                       }
                       if ($cell === '' && isset($appBy[$tid][$date]) && $appBy[$tid][$date]['status'] === '申請中') {
                         $r = $appBy[$tid][$date]; $cell = hm($r['start_time']) . '-' . hm($r['end_time']); $cls = 'bg-warning';
                       }
+                      // 確定シフトには打刻・判定を表示
+                      $att = $confirmed ? ($attBy[$tid][$date] ?? null) : null;
+                      $punched = $att && !empty($att['clock_in']);
+                      $judge = $confirmed ? attendance_judgment_cell($confirmed['start_time'], $confirmed['end_time'], $att, $date) : '';
+                      $showJudge = $confirmed && ($punched || strpos($judge, '—') === false);
                     ?>
-                    <td class="text-center p-1"><?php if ($cell !== ''): ?><span class="badge <?= $cls ?>" style="font-weight:500"><?= h($cell) ?></span><?php endif; ?></td>
+                    <td class="text-center p-1">
+                      <?php if ($cell !== ''): ?><span class="badge <?= $cls ?>" style="font-weight:500"><?= h($cell) ?></span><?php endif; ?>
+                      <?php if ($punched): ?><div class="text-muted" style="font-size:10px;line-height:1.2;margin-top:2px">出<?= h(hm($att['clock_in'])) ?><?php if (!empty($att['clock_out'])): ?> 退<?= h(hm($att['clock_out'])) ?><?php endif; ?></div><?php endif; ?>
+                      <?php if ($showJudge): ?><div style="margin-top:2px"><?= $judge ?></div><?php endif; ?>
+                    </td>
                   <?php endforeach; ?>
                 </tr>
               <?php endforeach; ?>
@@ -112,7 +128,7 @@ render_header('シフト表', $user, 'shifts_matrix.php');
           </table>
         </div>
       </div>
-      <p class="text-muted small mt-2">※ 緑＝確定シフト、黄＝申請中。確定・却下などの操作は「シフト管理」で行います。</p>
+      <p class="text-muted small mt-2">※ 緑＝確定シフト、黄＝申請中。確定シフトには打刻時刻と判定（OK／遅刻／早退／欠勤）を表示します。確定・却下は「シフト申請・確定」、時間の修正は「打刻・確定シフト」で行います。</p>
     <?php endif; ?>
   </div>
 <?php render_footer(); ?>

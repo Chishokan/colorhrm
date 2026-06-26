@@ -116,7 +116,7 @@ render_header('給与計算', $user, 'payroll.php');
     </div>
     <?php if ($flash): ?><div class="alert alert-success py-2"><?= h($flash) ?></div><?php endif; ?>
     <?php if ($err): ?><div class="alert alert-danger py-2"><?= h($err) ?></div><?php endif; ?>
-    <p class="text-muted small">確定シフト（シフト管理で確定したもの）と時給表から計算します。授業給与=round(授業分/60×授業時給)、運営給与=round(運営分/60×運営時給)、交通費は勤務日数で算定（≤5日:日数×200／超過:切上げ(日数/5)×1000）。</p>
+    <p class="text-muted small">確定シフト（シフト申請・確定で確定したもの）と時給表から計算します。授業給与=round(授業分/60×授業時給)、運営給与=round(運営分/60×運営時給)、交通費は勤務日数で算定（≤5日:日数×200／超過:切上げ(日数/5)×1000）。</p>
 
     <div class="card shadow-sm">
       <div class="table-responsive">
@@ -155,7 +155,7 @@ render_header('給与計算', $user, 'payroll.php');
               </tr>
             <?php endforeach; ?>
             <?php if (!$rows): ?>
-              <tr><td colspan="10" class="text-center text-muted py-4">この月の確定シフトはありません。<a href="shifts_admin.php?m=<?= h($month) ?>">シフト管理</a>で確定してください。</td></tr>
+              <tr><td colspan="10" class="text-center text-muted py-4">この月の確定シフトはありません。<a href="shifts_admin.php?m=<?= h($month) ?>">シフト申請・確定</a>で確定してください。</td></tr>
             <?php else: ?>
               <tr class="table-light fw-bold">
                 <td colspan="5" class="text-end">合計</td>
