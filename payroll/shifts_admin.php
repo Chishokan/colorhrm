@@ -95,10 +95,14 @@ foreach (db()->query("SELECT id, name FROM staff")->fetchAll() as $s) { $names[(
 $pending = db()->prepare("SELECT * FROM shift_applications WHERE status='申請中' AND DATE_FORMAT(work_date,'%Y-%m')=?" . $scopeSql . " ORDER BY work_date, start_time");
 $pending->execute(array_merge([$month], $scopeParams));
 $pending = $pending->fetchAll();
-// フィルタ用：申請中に含まれる講師（名前順）
-$pendStaff = [];
-foreach ($pending as $a) { $pendStaff[(int)$a['staff_id']] = $names[(int)$a['staff_id']] ?? ('#' . $a['staff_id']); }
+// フィルタ用：申請中に含まれる講師（名前順）と、その講師の配属教室
+$pendStaff = []; $pendRooms = [];
+foreach ($pending as $a) {
+  $pendStaff[(int)$a['staff_id']] = $names[(int)$a['staff_id']] ?? ('#' . $a['staff_id']);
+  foreach ($teacherRooms[(int)$a['staff_id']] ?? [] as $rm) { $pendRooms[$rm] = true; }
+}
 asort($pendStaff, SORT_FLAG_CASE | SORT_STRING);
+$pendRooms = array_keys($pendRooms); sort($pendRooms, SORT_STRING);
 
 render_header('シフト申請・確定', $user, 'shifts_admin.php');
 ?>
@@ -139,6 +143,16 @@ render_header('シフト申請・確定', $user, 'shifts_admin.php');
               <?php foreach ($pendStaff as $sid => $nm): ?><option value="<?= (int)$sid ?>"><?= h($nm) ?></option><?php endforeach; ?>
             </select>
           </div>
+          <?php if ($pendRooms): ?>
+          <div class="col-auto">
+            <label class="form-label small mb-0" for="fRoom">教室で絞り込み</label>
+            <select id="fRoom" class="form-select form-select-sm" style="min-width:130px">
+              <option value="">（すべて）</option>
+              <?php foreach ($pendRooms as $rm): ?><option value="<?= h($rm) ?>"><?= h($rm) ?></option><?php endforeach; ?>
+            </select>
+            <div class="form-text small mb-0" style="font-size:11px">※配属教室で絞り込み</div>
+          </div>
+          <?php endif; ?>
           <div class="col-auto">
             <label class="form-label small mb-0" for="fDate">日付で絞り込み</label>
             <input type="date" id="fDate" class="form-control form-control-sm" min="<?= h($month) ?>-01" max="<?= h(date('Y-m-t', strtotime($month . '-01'))) ?>">
@@ -153,7 +167,7 @@ render_header('シフト申請・確定', $user, 'shifts_admin.php');
           <thead class="table-light"><tr><th>講師</th><th>日付</th><th>申請時間</th><th class="text-end">稼働</th><th>メモ</th><th style="min-width:340px">確定 時間／教室／授業(分)</th><th></th></tr></thead>
           <tbody id="pendingBody">
             <?php foreach ($pending as $a): $tot = shift_minutes($a['start_time'],$a['end_time']); ?>
-              <tr data-staff="<?= (int)$a['staff_id'] ?>" data-date="<?= h($a['work_date']) ?>">
+              <tr data-staff="<?= (int)$a['staff_id'] ?>" data-date="<?= h($a['work_date']) ?>" data-rooms="<?= h(implode(',', $teacherRooms[(int)$a['staff_id']] ?? [])) ?>">
                 <td><?= h($names[(int)$a['staff_id']] ?? ('#'.$a['staff_id'])) ?></td>
                 <td><?= h($a['work_date']) ?></td>
                 <td><?= h(hm($a['start_time'])) ?>〜<?= h(hm($a['end_time'])) ?></td>
@@ -187,20 +201,25 @@ render_header('シフト申請・確定', $user, 'shifts_admin.php');
       <?php if ($pending): ?>
       <script>
         (function(){
-          var fs=document.getElementById('fStaff'), fd=document.getElementById('fDate'),
+          var fs=document.getElementById('fStaff'), fr=document.getElementById('fRoom'),
+              fd=document.getElementById('fDate'),
               fc=document.getElementById('fClear'), cnt=document.getElementById('fCount'),
               rows=[].slice.call(document.querySelectorAll('#pendingBody tr[data-staff]'));
           function apply(){
-            var s=fs?fs.value:'', d=fd?fd.value:'', n=0;
+            var s=fs?fs.value:'', rm=fr?fr.value:'', d=fd?fd.value:'', n=0;
             rows.forEach(function(r){
-              var ok=(s===''||r.getAttribute('data-staff')===s)&&(d===''||r.getAttribute('data-date')===d);
+              var rooms=','+(r.getAttribute('data-rooms')||'')+',';
+              var ok=(s===''||r.getAttribute('data-staff')===s)
+                   &&(rm===''||rooms.indexOf(','+rm+',')>=0)
+                   &&(d===''||r.getAttribute('data-date')===d);
               r.style.display=ok?'':'none'; if(ok)n++;
             });
-            if(cnt) cnt.textContent=(s||d)?('表示 '+n+' 件'):'';
+            if(cnt) cnt.textContent=(s||rm||d)?('表示 '+n+' 件'):'';
           }
           fs&&fs.addEventListener('change',apply);
+          fr&&fr.addEventListener('change',apply);
           fd&&fd.addEventListener('input',apply);
-          fc&&fc.addEventListener('click',function(){ if(fs)fs.value=''; if(fd)fd.value=''; apply(); });
+          fc&&fc.addEventListener('click',function(){ if(fs)fs.value=''; if(fr)fr.value=''; if(fd)fd.value=''; apply(); });
           apply();
         })();
       </script>

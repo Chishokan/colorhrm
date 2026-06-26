@@ -84,10 +84,13 @@ if ($scope !== null) { $staffOpts = array_values(array_filter($staffOpts, fn($s)
 $days = db()->prepare("SELECT * FROM shift_days WHERE DATE_FORMAT(work_date,'%Y-%m')=?" . $scopeSql . " ORDER BY work_date, staff_id, start_time");
 $days->execute(array_merge([$month], $scopeParams));
 $days = $days->fetchAll();
-// フィルタ用：確定シフトに含まれる講師（名前順）
+// フィルタ用：確定シフトに含まれる講師（名前順）と教室
 $dayStaff = [];
 foreach ($days as $d) { $dayStaff[(int)$d['staff_id']] = $names[(int)$d['staff_id']] ?? ('#' . $d['staff_id']); }
 asort($dayStaff, SORT_FLAG_CASE | SORT_STRING);
+$dayRooms = [];
+foreach ($days as $d) { $rm = trim((string)($d['room'] ?? '')); if ($rm !== '') { $dayRooms[$rm] = true; } }
+$dayRooms = array_keys($dayRooms); sort($dayRooms, SORT_STRING);
 
 // 打刻（入退室）を [staff_id|date] で引けるように
 $attBy = [];
@@ -147,6 +150,15 @@ render_header('打刻・確定シフト', $user, 'shifts_done.php');
               <?php foreach ($dayStaff as $sid => $nm): ?><option value="<?= (int)$sid ?>"><?= h($nm) ?></option><?php endforeach; ?>
             </select>
           </div>
+          <?php if ($dayRooms): ?>
+          <div class="col-auto">
+            <label class="form-label small mb-0" for="dRoom">教室で絞り込み</label>
+            <select id="dRoom" class="form-select form-select-sm" style="min-width:130px">
+              <option value="">（すべて）</option>
+              <?php foreach ($dayRooms as $rm): ?><option value="<?= h($rm) ?>"><?= h($rm) ?></option><?php endforeach; ?>
+            </select>
+          </div>
+          <?php endif; ?>
           <div class="col-auto">
             <label class="form-label small mb-0" for="dDate">日付で絞り込み</label>
             <input type="date" id="dDate" class="form-control form-control-sm" min="<?= h($month) ?>-01" max="<?= h(date('Y-m-t', strtotime($month . '-01'))) ?>">
@@ -160,13 +172,12 @@ render_header('打刻・確定シフト', $user, 'shifts_done.php');
         <table class="table table-sm align-middle mb-0">
           <thead class="table-light"><tr><th>講師</th><th>日付</th><th>教室</th><th style="width:104px">開始</th><th style="width:104px">終了</th><th class="text-end">稼働</th><th style="width:104px">授業(分)</th><th class="text-end">運営</th><th>出勤</th><th>退勤</th><th>判定</th><th></th></tr></thead>
           <tbody id="daysBody">
-            <?php foreach ($days as $d): $tot=shift_minutes($d['start_time'],$d['end_time']); $cls=min((int)$d['class_minutes'],$tot);
+            <?php foreach ($days as $d): $bd = shift_work_breakdown($d['start_time'],$d['end_time'],$d['class_minutes']);
               $att = $attBy[$d['staff_id'].'|'.$d['work_date']] ?? null;
               ?>
-              <tr data-staff="<?= (int)$d['staff_id'] ?>" data-date="<?= h($d['work_date']) ?>">
-                <td><?= h($names[(int)$d['staff_id']] ?? ('#'.$d['staff_id'])) ?></td>
+              <tr data-staff="<?= (int)$d['staff_id'] ?>" data-date="<?= h($d['work_date']) ?>" data-room="<?= h($d['room'] ?? '') ?>">
+                <td><form method="post" id="ud<?= (int)$d['id'] ?>"><?= csrf_field() ?><input type="hidden" name="action" value="update_day"><input type="hidden" name="id" value="<?= (int)$d['id'] ?>"></form><?= h($names[(int)$d['staff_id']] ?? ('#'.$d['staff_id'])) ?></td>
                 <td><?= h($d['work_date']) ?></td>
-                <form method="post" id="ud<?= (int)$d['id'] ?>"><?= csrf_field() ?><input type="hidden" name="action" value="update_day"><input type="hidden" name="id" value="<?= (int)$d['id'] ?>"></form>
                 <td>
                   <?php if ($hasRoom): $trs = $teacherRooms[(int)$d['staff_id']] ?? []; $cur = $d['room'] ?? ''; ?>
                     <select form="ud<?= (int)$d['id'] ?>" name="room" class="form-select form-select-sm" style="min-width:90px">
@@ -178,9 +189,9 @@ render_header('打刻・確定シフト', $user, 'shifts_done.php');
                 </td>
                 <td><input form="ud<?= (int)$d['id'] ?>" type="time" name="start_time" value="<?= h(hm($d['start_time'])) ?>" class="form-control form-control-sm"></td>
                 <td><input form="ud<?= (int)$d['id'] ?>" type="time" name="end_time" value="<?= h(hm($d['end_time'])) ?>" class="form-control form-control-sm"></td>
-                <td class="text-end"><?= h(fmt_hm($tot)) ?></td>
-                <td><input form="ud<?= (int)$d['id'] ?>" type="number" name="class_minutes" value="<?= (int)$d['class_minutes'] ?>" min="0" max="<?= $tot ?>" class="form-control form-control-sm"></td>
-                <td class="text-end"><?= h(fmt_hm($tot - $cls)) ?></td>
+                <td class="text-end"<?= $bd['break'] ? ' title="拘束 ' . h(fmt_hm($bd['gross'])) . ' − 休憩45分"' : '' ?>><?= h(fmt_hm($bd['net'])) ?><?php if ($bd['break']): ?><span class="text-muted" style="font-size:10px"> 休憩45</span><?php endif; ?></td>
+                <td><input form="ud<?= (int)$d['id'] ?>" type="number" name="class_minutes" value="<?= (int)$d['class_minutes'] ?>" min="0" max="<?= $bd['gross'] ?>" class="form-control form-control-sm"></td>
+                <td class="text-end"><?= h(fmt_hm($bd['ops'])) ?></td>
                 <td class="small"><?= $att && !empty($att['clock_in']) ? h(hm($att['clock_in'])).'<br><span class="text-muted">'.h($att['in_room']).'</span>' : '—' ?></td>
                 <td class="small"><?= $att && !empty($att['clock_out']) ? h(hm($att['clock_out'])).'<br><span class="text-muted">'.h($att['out_room']).'</span>' : '—' ?></td>
                 <td><?= attendance_judgment_cell($d['start_time'], $d['end_time'], $att, $d['work_date']) ?></td>
@@ -197,20 +208,24 @@ render_header('打刻・確定シフト', $user, 'shifts_done.php');
       <?php if ($days): ?>
       <script>
         (function(){
-          var fs=document.getElementById('dStaff'), fd=document.getElementById('dDate'),
+          var fs=document.getElementById('dStaff'), fr=document.getElementById('dRoom'),
+              fd=document.getElementById('dDate'),
               fc=document.getElementById('dClear'), cnt=document.getElementById('dCount'),
               rows=[].slice.call(document.querySelectorAll('#daysBody tr[data-staff]'));
           function apply(){
-            var s=fs?fs.value:'', d=fd?fd.value:'', n=0;
+            var s=fs?fs.value:'', rm=fr?fr.value:'', d=fd?fd.value:'', n=0;
             rows.forEach(function(r){
-              var ok=(s===''||r.getAttribute('data-staff')===s)&&(d===''||r.getAttribute('data-date')===d);
+              var ok=(s===''||r.getAttribute('data-staff')===s)
+                   &&(rm===''||r.getAttribute('data-room')===rm)
+                   &&(d===''||r.getAttribute('data-date')===d);
               r.style.display=ok?'':'none'; if(ok)n++;
             });
-            if(cnt) cnt.textContent=(s||d)?('表示 '+n+' 件'):'';
+            if(cnt) cnt.textContent=(s||rm||d)?('表示 '+n+' 件'):'';
           }
           fs&&fs.addEventListener('change',apply);
+          fr&&fr.addEventListener('change',apply);
           fd&&fd.addEventListener('input',apply);
-          fc&&fc.addEventListener('click',function(){ if(fs)fs.value=''; if(fd)fd.value=''; apply(); });
+          fc&&fc.addEventListener('click',function(){ if(fs)fs.value=''; if(fr)fr.value=''; if(fd)fd.value=''; apply(); });
           apply();
         })();
       </script>
