@@ -78,7 +78,7 @@ render_header('ヘルプ・使い方', $user, 'help.php');
     <div class="card shadow-sm mb-3">
       <div class="card-header fw-bold">はじめに：メニュー構成</div>
       <div class="card-body small mb-0">
-        左サイドメニューは <strong>ダッシュボード</strong>／<strong>シフト</strong>（シフト表・シフト管理）／
+        左サイドメニューは <strong>ダッシュボード</strong>／<strong>シフト</strong>（シフト表・シフト申請・確定・打刻・確定シフト）／
         <strong>給与</strong>（給与計算）に分かれています。スマホでは左上の三本線から開けます。
       </div>
     </div>
@@ -95,20 +95,33 @@ render_header('ヘルプ・使い方', $user, 'help.php');
       <div class="card-body">
         教室を選ぶと、その教室の講師×日付で
         <span class="badge bg-warning text-dark">申請中</span>と<span class="badge bg-success">確定</span>を一覧できます。
-        確定したシフトは、確定した教室の列に表示されます。
+        確定したシフトは、確定した教室の列に表示されます。<strong>確定シフトには打刻時刻と判定</strong>
+        （<span class="badge bg-success">OK</span>／<span class="badge bg-danger">遅刻</span>/<span class="badge bg-danger">早退</span>／<span class="badge bg-dark">欠勤</span>）も表示されます。
       </div>
     </div>
 
     <div class="card shadow-sm mb-3">
-      <div class="card-header fw-bold">③ シフト管理（確定の手順）</div>
+      <div class="card-header fw-bold">③ シフト申請・確定（確定の手順）</div>
       <div class="card-body">
         <p class="mb-2">講師の申請を確認して確定します。</p>
         <ol class="mb-2">
-          <li><strong>申請中（受付待ち）</strong>の各行で、<strong>教室</strong>と<strong>授業（分）</strong>を入力し
-            <span class="badge bg-success">確定</span> を押します（不要なら <span class="badge bg-danger">却下</span>）。</li>
+          <li><strong>申請中（受付待ち）</strong>の各行で、<strong>確定する時間</strong>・<strong>教室</strong>・<strong>授業（分）</strong>を入力し
+            <span class="badge bg-success">確定</span> を押します（不要なら <span class="badge bg-secondary">却下</span>）。
+            申請（可能時間）が <code>18:00〜21:30</code> でも、<code>19:00〜20:00</code> のように時間を変えて確定できます。</li>
           <li>その月の申請をまとめて確定する場合は <span class="badge bg-success">この月をまとめて確定</span>。</li>
+          <li><strong>講師で絞り込み／日付で絞り込み</strong>で、1名分の確認や、ある日に申請がある講師の確認ができます。</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+      <div class="card-header fw-bold">④ 打刻・確定シフト（確認・修正）</div>
+      <div class="card-body">
+        <p class="mb-2">確定済みシフトの一覧と<strong>打刻状況（出勤・退勤・判定）</strong>を確認し、必要に応じて修正します。</p>
+        <ol class="mb-2">
+          <li><strong>確定シフト</strong>の一覧で、教室・時間・授業分の修正（「保存」）や削除ができます。</li>
           <li>申請がないシフトは「確定シフトを直接追加」から登録できます。</li>
-          <li><strong>確定シフト</strong>の一覧では、教室・時間・授業分の修正（「保存」）や削除ができます。</li>
+          <li>講師ごと・日付で絞り込めます。</li>
         </ol>
         <p class="mb-0 small text-muted">
           講師は1日に複数の教室で勤務することがあります。日ごとに<strong>確定した教室</strong>が、その教室のシフト表・講師のマイページに反映されます。
@@ -117,7 +130,7 @@ render_header('ヘルプ・使い方', $user, 'help.php');
     </div>
 
     <div class="card shadow-sm mb-3">
-      <div class="card-header fw-bold">④ 給与計算・明細発行</div>
+      <div class="card-header fw-bold">⑤ 給与計算・明細発行</div>
       <div class="card-body">
         <p class="mb-2">「給与計算」で月を選ぶと、確定シフトと時給表から自動計算されます。</p>
         <ul class="mb-2">
@@ -134,9 +147,9 @@ render_header('ヘルプ・使い方', $user, 'help.php');
     </div>
 
     <div class="card shadow-sm mb-3">
-      <div class="card-header fw-bold">⑤ 担当教室について</div>
+      <div class="card-header fw-bold">⑥ 担当教室について</div>
       <div class="card-body">
-        スタッフ権限では、<strong>自分の担当教室に配属された講師</strong>がシフト表・シフト管理・給与計算の対象になります。
+        スタッフ権限では、<strong>自分の担当教室に配属された講師</strong>がシフト表・シフト申請・確定・打刻・確定シフト・給与計算の対象になります。
         担当教室の設定は管理者が行います。
       </div>
     </div>
@@ -146,6 +159,7 @@ render_header('ヘルプ・使い方', $user, 'help.php');
       <div class="card-body small mb-0">
         講師は<strong>打刻</strong>（出勤/退勤教室を選ぶ。シフトなしでも打刻可）、<strong>シフト可能登録</strong>（入れる日だけ時間入力）、
         <strong>給与明細</strong>（PDF閲覧）を使います。打刻には配属教室の設定が必要です。
+        講師のホーム「当月の確定シフト」には<strong>自分の出勤・退勤・判定</strong>が表示され、打刻状況を本人が確認できます。
       </div>
     </div>
 

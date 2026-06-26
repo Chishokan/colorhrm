@@ -103,7 +103,8 @@ function nav_links_for($user) {
   if ($role === 'admin' || $role === 'staff') {
     $links['index.php']        = 'ダッシュボード';
     $links['shifts_matrix.php'] = 'シフト表';
-    $links['shifts_admin.php'] = 'シフト管理';
+    $links['shifts_admin.php'] = 'シフト申請・確定';
+    $links['shifts_done.php']  = '打刻・確定シフト';
     $links['payroll.php']      = '給与計算';
   }
   if ($role === 'admin') {
@@ -119,7 +120,8 @@ function nav_groups_for($user) {
   $g[] = ['label' => '', 'items' => ['index.php' => 'ダッシュボード']];
   $g[] = ['label' => 'シフト', 'items' => [
     'shifts_matrix.php' => 'シフト表',
-    'shifts_admin.php'  => 'シフト管理',
+    'shifts_admin.php'  => 'シフト申請・確定',
+    'shifts_done.php'   => '打刻・確定シフト',
   ]];
   $pay = ['payroll.php' => '給与計算'];
   if ($role === 'admin') { $pay['rates.php'] = '時給表'; }
@@ -282,6 +284,51 @@ function fmt_hm($mins) {
 }
 // "HH:MM:SS" → "HH:MM"
 function hm($t) { return substr((string)$t, 0, 5); }
+
+// ------------------------------------------------------------
+// 確定シフト（shift_days）操作の共通ヘルパー（シフト申請・確定／打刻・確定シフトで共用）
+// ------------------------------------------------------------
+// 講師ID => 配属教室[] のマップ
+function teacher_rooms_map() {
+  $m = [];
+  foreach (db()->query("SELECT id, classrooms FROM staff")->fetchAll() as $s) {
+    $m[(int)$s['id']] = classroom_list($s['classrooms'] ?? '');
+  }
+  return $m;
+}
+// 教室を講師の配属に収める（未指定/配属外は配属の先頭、配属無しは空）
+function norm_room($sid, $room, $map) {
+  $room  = trim((string)$room);
+  $rooms = $map[(int)$sid] ?? [];
+  if ($room !== '' && (!$rooms || in_array($room, $rooms, true))) return $room;
+  return $rooms[0] ?? '';
+}
+// 確定シフトを1件作成
+function insert_shift_day($staffId, $date, $start, $end, $class, $note, $appId, $room, $hasRoom) {
+  if ($hasRoom) {
+    db()->prepare("INSERT INTO shift_days (tenant_id,staff_id,work_date,room,start_time,end_time,class_minutes,note,application_id) VALUES (1,?,?,?,?,?,?,?,?)")
+        ->execute([$staffId, $date, $room, $start, $end, $class, $note, $appId]);
+  } else {
+    db()->prepare("INSERT INTO shift_days (tenant_id,staff_id,work_date,start_time,end_time,class_minutes,note,application_id) VALUES (1,?,?,?,?,?,?,?)")
+        ->execute([$staffId, $date, $start, $end, $class, $note, $appId]);
+  }
+}
+// 打刻判定（遅刻/早退/欠勤）のバッジHTML
+function attendance_flag_badges($flags) {
+  if (!$flags) return '<span class="badge bg-success">OK</span>';
+  $map = ['遅刻' => 'bg-danger', '早退' => 'bg-danger', '欠勤' => 'bg-dark'];
+  $h = '';
+  foreach ($flags as $f) { $h .= '<span class="badge ' . ($map[$f] ?? 'bg-secondary') . ' me-1">' . h($f) . '</span>'; }
+  return $h;
+}
+// 判定セルHTML。打刻あり=OK/遅刻/早退、過去の未打刻=欠勤、未来など未確定は「—」。
+function attendance_judgment_cell($shiftStart, $shiftEnd, $att, $workDate) {
+  $flags   = attendance_flags($shiftStart, $shiftEnd, $att, $workDate);
+  $punched = $att && !empty($att['clock_in']);
+  if (!$punched && !$flags) return '<span class="text-muted">—</span>';
+  return attendance_flag_badges($flags);
+}
+
 // 月文字列（YYYY-MM）を検証し、不正なら当月を返す
 function valid_month($m) {
   return preg_match('/^\d{4}-\d{2}$/', (string)$m) ? $m : date('Y-m');
@@ -526,7 +573,7 @@ function send_pending_shift_notice($toEmail, $toName, $rows) {
   $body  = ($toName !== '' ? "{$toName} 様\n\n" : '')
          . "講師から登録されたシフトで、確定待ち（申請中）があります。\n\n"
          . $lines . "\n"
-         . "下記からログインし、「シフト管理」で確定してください。\n{$url}\n\n"
+         . "下記からログインし、「シフト申請・確定」で確定してください。\n{$url}\n\n"
          . "※ この通知は1日1回送信しています。\n※ このメールは送信専用です。\n\n智翔館グループ 給与・シフト";
   $prevLang = mb_language(); $prevEnc = mb_internal_encoding();
   mb_language('uni'); mb_internal_encoding('UTF-8');
