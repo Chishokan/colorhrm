@@ -37,16 +37,16 @@ function render_month_shifts($days, $hasRoom, $names = null, $attBy = null) {
         <?php if ($attBy !== null): ?><th>出勤</th><th>退勤</th><th>判定</th><?php endif; ?>
       </tr></thead>
       <tbody>
-        <?php $tt = 0; foreach ($days as $d): $tot = shift_minutes($d['start_time'], $d['end_time']); $cls = min((int)$d['class_minutes'], $tot); $tt += $tot;
+        <?php $tt = 0; foreach ($days as $d): $bd = shift_work_breakdown($d['start_time'], $d['end_time'], $d['class_minutes']); $tt += $bd['net'];
           $att = $attBy !== null ? ($attBy[$d['staff_id'] . '|' . $d['work_date']] ?? null) : null; ?>
           <tr>
             <?php if ($names !== null): ?><td><?= h($names[(int)$d['staff_id']] ?? ('#' . $d['staff_id'])) ?></td><?php endif; ?>
             <td class="small"><?= h($d['work_date']) ?></td>
             <?php if ($hasRoom): ?><td class="small"><?= h($d['room'] ?? '') ?: '—' ?></td><?php endif; ?>
             <td class="small"><?= h(hm($d['start_time'])) ?>〜<?= h(hm($d['end_time'])) ?></td>
-            <td class="text-end small"><?= h(fmt_hm($tot)) ?></td>
-            <td class="text-end small"><?= h(fmt_hm($cls)) ?></td>
-            <td class="text-end small"><?= h(fmt_hm($tot - $cls)) ?></td>
+            <td class="text-end small"<?= $bd['break'] ? ' title="拘束 ' . h(fmt_hm($bd['gross'])) . ' − 休憩45分"' : '' ?>><?= h(fmt_hm($bd['net'])) ?><?php if ($bd['break']): ?><span class="text-muted" style="font-size:10px"> 休憩45</span><?php endif; ?></td>
+            <td class="text-end small"><?= h(fmt_hm($bd['class'])) ?></td>
+            <td class="text-end small"><?= h(fmt_hm($bd['ops'])) ?></td>
             <?php if ($attBy !== null): ?>
               <td class="small"><?= $att && !empty($att['clock_in']) ? h(hm($att['clock_in'])) : '—' ?></td>
               <td class="small"><?= $att && !empty($att['clock_out']) ? h(hm($att['clock_out'])) : '—' ?></td>

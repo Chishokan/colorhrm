@@ -277,6 +277,21 @@ function shift_minutes($start, $end) {
   if ($s === false || $e === false || $e <= $s) return 0;
   return (int) round(($e - $s) / 60);
 }
+
+// 休憩控除（分）。拘束時間が6時間（360分）を超える場合は45分を自動控除。
+function shift_break_minutes($grossMinutes) {
+  return (int)$grossMinutes > 360 ? 45 : 0;
+}
+
+// 1コマ分の内訳。休憩は運営（非授業）時間から差し引く。
+//   gross=拘束(開始〜終了)、break=休憩、class=授業、ops=運営、net=実働(=class+ops)。
+function shift_work_breakdown($start, $end, $classMin) {
+  $gross = shift_minutes($start, $end);
+  $brk   = shift_break_minutes($gross);
+  $cls   = min(max(0, (int)$classMin), $gross);
+  $ops   = max(0, $gross - $brk - $cls);
+  return ['gross' => $gross, 'break' => $brk, 'class' => $cls, 'ops' => $ops, 'net' => $cls + $ops];
+}
 // 分 → "H:MM"
 function fmt_hm($mins) {
   $mins = max(0, (int)$mins);
@@ -392,10 +407,10 @@ function compute_month_payroll($month) {
         'days_set' => [], 'class_min' => 0, 'ops_min' => 0,
       ];
     }
-    $worked = shift_minutes($r['start_time'], $r['end_time']);
-    $cls = min((int)$r['class_minutes'], $worked);
-    $agg[$sid]['class_min'] += $cls;
-    $agg[$sid]['ops_min']   += ($worked - $cls);
+    // 拘束6時間超は45分休憩を運営から控除（shift_work_breakdown）
+    $bd = shift_work_breakdown($r['start_time'], $r['end_time'], $r['class_minutes']);
+    $agg[$sid]['class_min'] += $bd['class'];
+    $agg[$sid]['ops_min']   += $bd['ops'];
     $agg[$sid]['days_set'][$r['work_date']] = true;
   }
 
