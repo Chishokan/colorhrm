@@ -105,6 +105,7 @@ function nav_links_for($user) {
     $links['shifts_matrix.php'] = 'シフト表';
     $links['shifts_admin.php'] = 'シフト申請・確定';
     $links['shifts_done.php']  = '打刻・確定シフト';
+    $links['clockout.php']     = '退勤チェック・報告';
     $links['payroll.php']      = '給与計算';
   }
   if ($role === 'admin') {
@@ -122,6 +123,7 @@ function nav_groups_for($user) {
     'shifts_matrix.php' => 'シフト表',
     'shifts_admin.php'  => 'シフト申請・確定',
     'shifts_done.php'   => '打刻・確定シフト',
+    'clockout.php'      => '退勤チェック・報告',
   ]];
   $pay = ['payroll.php' => '給与計算'];
   if ($role === 'admin') { $pay['rates.php'] = '時給表'; }
@@ -852,6 +854,49 @@ function scoped_staff_ids($user) {
   if (!$mine) return [];
   $ids = staff_ids_in_classrooms($mine);
   return $ids === null ? null : $ids;
+}
+
+// ------------------------------------------------------------
+// 退勤チェックリスト（教室別）・退勤報告
+// ------------------------------------------------------------
+function clockout_checklist_table_exists() {
+  static $ok = null;
+  if ($ok === null) { try { db()->query("SELECT 1 FROM clockout_checklist LIMIT 1"); $ok = true; } catch (Throwable $e) { $ok = false; } }
+  return $ok;
+}
+function clockout_reports_table_exists() {
+  static $ok = null;
+  if ($ok === null) { try { db()->query("SELECT 1 FROM clockout_reports LIMIT 1"); $ok = true; } catch (Throwable $e) { $ok = false; } }
+  return $ok;
+}
+// 指定教室の有効チェック項目（文字列の配列）
+function clockout_checklist_for($room) {
+  if ($room === '' || !clockout_checklist_table_exists()) return [];
+  try {
+    $st = db()->prepare("SELECT item FROM clockout_checklist WHERE classroom=? AND is_active=1 ORDER BY sort_order, id");
+    $st->execute([$room]);
+    return $st->fetchAll(PDO::FETCH_COLUMN);
+  } catch (Throwable $e) { return []; }
+}
+// 教室のチェック項目を全置換（items=文字列配列）
+function set_clockout_checklist($room, array $items) {
+  if (!clockout_checklist_table_exists()) return false;
+  db()->prepare("DELETE FROM clockout_checklist WHERE classroom=?")->execute([$room]);
+  $ins = db()->prepare("INSERT INTO clockout_checklist (tenant_id,classroom,item,sort_order,is_active) VALUES (1,?,?,?,1)");
+  $i = 0;
+  foreach ($items as $it) {
+    $it = trim((string)$it);
+    if ($it === '') continue;
+    $ins->execute([$room, mb_substr($it, 0, 255), ++$i]);
+  }
+  return true;
+}
+// 退勤報告を記録
+function record_clockout_report($staffId, $workDate, $room, array $items) {
+  if (!clockout_reports_table_exists()) return false;
+  db()->prepare("INSERT INTO clockout_reports (tenant_id,staff_id,work_date,classroom,items) VALUES (1,?,?,?,?)")
+      ->execute([(int)$staffId, $workDate, $room, json_encode(array_values($items), JSON_UNESCAPED_UNICODE)]);
+  return true;
 }
 
 // ------------------------------------------------------------

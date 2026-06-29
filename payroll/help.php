@@ -152,7 +152,15 @@ render_header('ヘルプ・使い方', $user, 'help.php');
     </div>
 
     <div class="card shadow-sm mb-3">
-      <div class="card-header fw-bold">⑥ 担当教室について</div>
+      <div class="card-header fw-bold">⑥ 退勤チェック・報告</div>
+      <div class="card-body">
+        <p class="mb-2">「退勤チェック・報告」で、<strong>教室ごとの退勤チェック項目</strong>（1行＝1項目）を編集できます（staffは担当教室のみ）。</p>
+        <p class="mb-0 small text-muted">講師は<strong>退勤打刻時</strong>に、退勤教室のチェック項目が表示され、<strong>全てチェック</strong>すると退勤打刻が押せます（＝報告）。報告は同画面の一覧で確認できます。</p>
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+      <div class="card-header fw-bold">⑦ 担当教室について</div>
       <div class="card-body">
         スタッフ権限では、<strong>自分の担当教室に配属された講師</strong>がシフト表・シフト申請・確定・打刻・確定シフト・給与計算の対象になります。
         担当教室の設定は管理者が行います。
@@ -162,7 +170,7 @@ render_header('ヘルプ・使い方', $user, 'help.php');
     <div class="card shadow-sm mb-3 border-info">
       <div class="card-header fw-bold bg-info-subtle">参考：講師の画面</div>
       <div class="card-body small mb-0">
-        講師は<strong>打刻</strong>（出勤/退勤教室を選ぶ。シフトなしでも打刻可）、<strong>シフト可能登録</strong>（入れる日だけ時間入力）、
+        講師は<strong>打刻</strong>（出勤/退勤教室を選ぶ。シフトなしでも打刻可。<strong>退勤時は教室のチェック項目を全てチェックすると退勤打刻できます</strong>）、<strong>シフト可能登録</strong>（入れる日だけ時間入力）、
         <strong>給与明細</strong>（PDF閲覧）を使います。打刻には配属教室の設定が必要です。
         講師のホーム「当月の確定シフト」には<strong>自分の出勤・退勤・判定</strong>が表示され、打刻状況を本人が確認できます。
       </div>
