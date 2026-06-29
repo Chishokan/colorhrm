@@ -49,10 +49,10 @@ if (clockout_reports_table_exists()) {
   $reports = $q->fetchAll();
 }
 
-render_header('退勤チェック・報告', $user, 'clockout.php');
+render_header('退勤チェック', $user, 'clockout.php');
 ?>
   <div class="container py-4">
-    <h4 class="mb-3">退勤チェック・報告</h4>
+    <h4 class="mb-3">退勤チェック</h4>
     <?php if (!clockout_checklist_table_exists()): ?>
       <div class="alert alert-warning py-2 small">退勤チェックリスト用テーブルがありません。<code>migrations/021_clockout_checklist.sql</code> を実行してください。</div>
     <?php endif; ?>
@@ -83,7 +83,7 @@ render_header('退勤チェック・報告', $user, 'clockout.php');
 
     <div class="card shadow-sm">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <span>退勤報告（<?= h($month) ?>）<span class="text-muted small ms-1"><?= count($reports) ?>件</span></span>
+        <span>退勤チェック記録（<?= h($month) ?>）<span class="text-muted small ms-1"><?= count($reports) ?>件</span></span>
         <div class="btn-group btn-group-sm">
           <a class="btn btn-outline-secondary" href="?m=<?= h($prev) ?>">← <?= h($prev) ?></a>
           <span class="btn btn-light disabled"><?= h($month) ?></span>
@@ -103,7 +103,7 @@ render_header('退勤チェック・報告', $user, 'clockout.php');
                 <td class="small"><?= h(substr((string)$r['created_at'], 11, 5)) ?></td>
               </tr>
             <?php endforeach; ?>
-            <?php if (!$reports): ?><tr><td colspan="5" class="text-center text-muted py-3"><?= clockout_reports_table_exists() ? 'この月の退勤報告はありません。' : 'migrations/021 未実行のため報告は記録されません。' ?></td></tr><?php endif; ?>
+            <?php if (!$reports): ?><tr><td colspan="5" class="text-center text-muted py-3"><?= clockout_reports_table_exists() ? 'この月の退勤チェック記録はありません。' : 'migrations/021 未実行のため報告は記録されません。' ?></td></tr><?php endif; ?>
           </tbody>
         </table>
       </div>
