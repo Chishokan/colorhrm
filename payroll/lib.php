@@ -283,6 +283,27 @@ function shift_break_minutes($grossMinutes) {
   return (int)$grossMinutes > 360 ? 45 : 0;
 }
 
+// ------------------------------------------------------------
+// シフト可能登録のテンプレート（講師ごと）
+// ------------------------------------------------------------
+function shift_templates_table_exists() {
+  static $ok = null;
+  if ($ok === null) {
+    try { db()->query("SELECT 1 FROM shift_templates LIMIT 1"); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+  }
+  return $ok;
+}
+// 講師のテンプレート一覧
+function shift_templates_for($staffId) {
+  if (!shift_templates_table_exists()) return [];
+  try {
+    $st = db()->prepare("SELECT * FROM shift_templates WHERE staff_id=? ORDER BY sort_order, id");
+    $st->execute([(int)$staffId]);
+    return $st->fetchAll();
+  } catch (Throwable $e) { return []; }
+}
+
 // 1コマ分の内訳。休憩は運営（非授業）時間から差し引く。
 //   gross=拘束(開始〜終了)、break=休憩、class=授業、ops=運営、net=実働(=class+ops)。
 function shift_work_breakdown($start, $end, $classMin) {

@@ -53,6 +53,7 @@ render_header('ヘルプ・使い方', $user, 'help.php');
         <ul class="mb-2">
           <li><strong>入れる日だけ</strong>開始・終了の時間を入力します（空欄の日は申請しません）。</li>
           <li>「↑ 上をコピー」で前の行の時間をコピーできます。</li>
+          <li><strong>マイ シフトテンプレート</strong>：よく使う時間帯を登録しておき、テンプレートと曜日を選んで<strong>「空欄に適用」「上書き適用」</strong>で月間表へ一括入力できます（適用後に保存）。</li>
           <li>入力したら<span class="badge bg-primary">保存する</span>を押します。</li>
           <li>当月〜<strong>6か月先</strong>まで登録できます。</li>
         </ul>
