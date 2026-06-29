@@ -402,6 +402,30 @@ function transport_allowance($days) {
 //   返り値: [ ['staff'=>..., 'days'=>, 'class_min'=>, 'ops_min'=>,
 //             'class_rate'=>, 'ops_rate'=>, 'class_pay'=>, 'ops_pay'=>,
 //             'transport'=>, 'total'=>], ... ]（講師名順）
+// カラー履歴テーブルの有無
+function staff_color_history_table_exists() {
+  static $ok = null;
+  if ($ok === null) { try { db()->query("SELECT 1 FROM staff_color_history LIMIT 1"); $ok = true; } catch (Throwable $e) { $ok = false; } }
+  return $ok;
+}
+// [staff_id => [ ['d'=>effective_date,'c'=>color], ... ]]（effective_date 降順）
+function staff_color_history_map() {
+  if (!staff_color_history_table_exists()) return [];
+  $m = [];
+  try {
+    foreach (db()->query("SELECT staff_id, color, effective_date FROM staff_color_history ORDER BY staff_id, effective_date DESC, id DESC")->fetchAll() as $r) {
+      $m[(int)$r['staff_id']][] = ['d' => $r['effective_date'], 'c' => $r['color']];
+    }
+  } catch (Throwable $e) { return []; }
+  return $m;
+}
+// 指定日に有効なカラー（履歴が無ければ $fallback）
+function color_on_date($histList, $date, $fallback) {
+  if (!$histList) return $fallback;
+  foreach ($histList as $h) { if ($h['d'] <= $date) return $h['c']; }
+  return $histList[count($histList) - 1]['c']; // $date が最古より前なら最古のカラー
+}
+
 function compute_month_payroll($month) {
   // use_payroll 列の有無
   $hasUsePayroll = false;
@@ -417,6 +441,16 @@ function compute_month_payroll($month) {
   $q = db()->prepare($sql);
   $q->execute([$month]);
 
+  $histMap = staff_color_history_map();
+  $rateCache = []; // "color|departments" => ['class_rate'=>,'ops_rate'=>]
+  $rateFor = function ($departments, $color) use (&$rateCache) {
+    $key = $color . '|' . $departments;
+    if (!isset($rateCache[$key])) {
+      $rateCache[$key] = compute_class_rate(['color_rank' => $color, 'departments' => $departments]);
+    }
+    return $rateCache[$key];
+  };
+
   $agg = [];
   foreach ($q->fetchAll() as $r) {
     $sid = (int)$r['id'];
@@ -425,30 +459,46 @@ function compute_month_payroll($month) {
         'staff' => ['id' => $sid, 'name' => $r['name'], 'color_rank' => $r['color_rank'],
                     'departments' => $r['departments'],
                     'use_payroll' => $hasUsePayroll ? $r['use_payroll'] : 1],
-        'days_set' => [], 'class_min' => 0, 'ops_min' => 0,
+        'days_set' => [], 'by' => [],
       ];
     }
     // 拘束6時間超は45分休憩を運営から控除（shift_work_breakdown）
     $bd = shift_work_breakdown($r['start_time'], $r['end_time'], $r['class_minutes']);
-    $agg[$sid]['class_min'] += $bd['class'];
-    $agg[$sid]['ops_min']   += $bd['ops'];
+    // その勤務日に有効なカラーで時給を判定（適用日反映）
+    $color = color_on_date($histMap[$sid] ?? null, $r['work_date'], $r['color_rank']);
+    $rate  = $rateFor($r['departments'], $color);
+    if (!isset($agg[$sid]['by'][$color])) {
+      $agg[$sid]['by'][$color] = ['color' => $color, 'class_rate' => $rate['class_rate'], 'ops_rate' => $rate['ops_rate'], 'class_min' => 0, 'ops_min' => 0];
+    }
+    $agg[$sid]['by'][$color]['class_min'] += $bd['class'];
+    $agg[$sid]['by'][$color]['ops_min']   += $bd['ops'];
     $agg[$sid]['days_set'][$r['work_date']] = true;
   }
 
   $advances = advances_for_month($month);
   $out = [];
   foreach ($agg as $a) {
-    $rate = compute_class_rate($a['staff']);
-    $classPay = (int) round($a['class_min'] / 60 * $rate['class_rate']);
-    $opsPay   = (int) round($a['ops_min']   / 60 * $rate['ops_rate']);
+    $classMin = $opsMin = $classPay = $opsPay = 0;
+    $breakdown = [];
+    $repRate = ['class_rate' => 0, 'ops_rate' => 0]; $repMax = -1;
+    foreach ($a['by'] as $b) {
+      $cp = (int) round($b['class_min'] / 60 * $b['class_rate']);
+      $op = (int) round($b['ops_min']   / 60 * $b['ops_rate']);
+      $classMin += $b['class_min']; $opsMin += $b['ops_min']; $classPay += $cp; $opsPay += $op;
+      $breakdown[] = ['color' => $b['color'], 'class_rate' => $b['class_rate'], 'class_min' => $b['class_min'], 'class_pay' => $cp,
+                      'ops_rate' => $b['ops_rate'], 'ops_min' => $b['ops_min'], 'ops_pay' => $op];
+      if ($b['class_min'] > $repMax) { $repMax = $b['class_min']; $repRate = ['class_rate' => $b['class_rate'], 'ops_rate' => $b['ops_rate']]; }
+    }
+    if (!$breakdown) { $repRate = ['class_rate' => 1031, 'ops_rate' => 1031]; }
     $days     = count($a['days_set']);
     $transport = transport_allowance($days);
     $advance  = (int)($advances[(int)$a['staff']['id']] ?? 0);
     $out[] = [
       'staff' => $a['staff'], 'days' => $days,
-      'class_min' => $a['class_min'], 'ops_min' => $a['ops_min'],
-      'class_rate' => $rate['class_rate'], 'ops_rate' => $rate['ops_rate'],
+      'class_min' => $classMin, 'ops_min' => $opsMin,
+      'class_rate' => $repRate['class_rate'], 'ops_rate' => $repRate['ops_rate'],
       'class_pay' => $classPay, 'ops_pay' => $opsPay,
+      'breakdown' => $breakdown,
       'transport' => $transport, 'advance' => $advance,
       'total' => $classPay + $opsPay + $transport + $advance,
     ];
@@ -525,14 +575,19 @@ function set_staff_advance($staffId, $month, $amount) {
 //   $onlyStaffId 指定で個別発行。返り値: 発行した [['staff'=>, 'data'=>], ...]
 function issue_payslips($month, $issuedBy, $onlyStaffId = null, $allowedIds = null) {
   $rows = compute_month_payroll($month);
-  $hasAdv = payslips_has_column('advance'); // 未マイグレーションでも発行できるように
-  $up = db()->prepare(
-    "INSERT INTO payslips
-       (tenant_id,staff_id,month,days,class_min,ops_min,class_rate,ops_rate,class_pay,ops_pay,transport," . ($hasAdv ? 'advance,' : '') . "total,issued_at,issued_by)
-     VALUES (1,?,?,?,?,?,?,?,?,?,?," . ($hasAdv ? '?,' : '') . "?,NOW(),?)
-     ON DUPLICATE KEY UPDATE days=VALUES(days),class_min=VALUES(class_min),ops_min=VALUES(ops_min),
-       class_rate=VALUES(class_rate),ops_rate=VALUES(ops_rate),class_pay=VALUES(class_pay),ops_pay=VALUES(ops_pay),
-       transport=VALUES(transport)," . ($hasAdv ? 'advance=VALUES(advance),' : '') . "total=VALUES(total),issued_at=NOW(),issued_by=VALUES(issued_by)");
+  // 任意列（未マイグレーションでも発行できるように動的に組み立て）
+  $hasAdv = payslips_has_column('advance');
+  $hasBd  = payslips_has_column('breakdown');
+  $cols = ['tenant_id','staff_id','month','days','class_min','ops_min','class_rate','ops_rate','class_pay','ops_pay','transport'];
+  $vals = ['1','?','?','?','?','?','?','?','?','?','?'];
+  $upd  = ['days','class_min','ops_min','class_rate','ops_rate','class_pay','ops_pay','transport'];
+  if ($hasAdv) { $cols[] = 'advance';   $vals[] = '?'; $upd[] = 'advance'; }
+  if ($hasBd)  { $cols[] = 'breakdown'; $vals[] = '?'; $upd[] = 'breakdown'; }
+  $cols[] = 'total';     $vals[] = '?'; $upd[] = 'total';
+  $cols[] = 'issued_at'; $vals[] = 'NOW()';
+  $cols[] = 'issued_by'; $vals[] = '?';
+  $updSql = implode(',', array_map(fn($c) => "$c=VALUES($c)", $upd)) . ',issued_at=NOW(),issued_by=VALUES(issued_by)';
+  $up = db()->prepare("INSERT INTO payslips (" . implode(',', $cols) . ") VALUES (" . implode(',', $vals) . ") ON DUPLICATE KEY UPDATE $updSql");
   $issued = [];
   foreach ($rows as $r) {
     $sid = (int)$r['staff']['id'];
@@ -543,6 +598,7 @@ function issue_payslips($month, $issuedBy, $onlyStaffId = null, $allowedIds = nu
     $params = [$sid, $month, $r['days'], $r['class_min'], $r['ops_min'], $r['class_rate'], $r['ops_rate'],
                $r['class_pay'], $r['ops_pay'], $r['transport']];
     if ($hasAdv) { $params[] = (int)($r['advance'] ?? 0); }
+    if ($hasBd)  { $params[] = json_encode($r['breakdown'] ?? [], JSON_UNESCAPED_UNICODE); }
     $params[] = $r['total'];
     $params[] = (int)$issuedBy;
     $up->execute($params);
@@ -688,7 +744,7 @@ function build_payslip_pdf($slip, $staffName) {
   $pdf->Ln(2);
   // 明細表
   $pdf->SetFont('ipag', '', 11);
-  $w1 = 90; $w2 = 90;
+  $w1 = 118; $w2 = 62;
   $row = function ($label, $val, $bold = false) use ($pdf, $w1, $w2) {
     $pdf->SetFont('ipag', '', $bold ? 13 : 11);
     $pdf->Cell($w1, 9, $label, 1, 0, 'L');
@@ -696,11 +752,34 @@ function build_payslip_pdf($slip, $staffName) {
   };
   $fmt = function ($n) { return number_format((int)$n); };
   $row('勤務日数', $fmt($slip['days']) . ' 日');
-  $row('授業時間 / 授業時給', fmt_hm($slip['class_min']) . ' / ' . $fmt($slip['class_rate']) . ' 円');
-  $row('運営時間 / 運営時給', fmt_hm($slip['ops_min']) . ' / ' . $fmt($slip['ops_rate']) . ' 円');
-  $pdf->Ln(1);
-  $row('授業給与', $fmt($slip['class_pay']) . ' 円');
-  $row('運営給与', $fmt($slip['ops_pay']) . ' 円');
+
+  // カラー別内訳（単価×時間）。breakdown があればそれを、無ければ従来表示。
+  $bd = [];
+  if (isset($slip['breakdown']) && $slip['breakdown'] !== null && $slip['breakdown'] !== '') {
+    $tmp = json_decode((string)$slip['breakdown'], true);
+    if (is_array($tmp)) { $bd = $tmp; }
+  }
+  if ($bd) {
+    foreach ($bd as $b) {
+      if ((int)($b['class_min'] ?? 0) > 0) {
+        $row('授業 ' . ($b['color'] ?? '') . '（' . $fmt($b['class_rate'] ?? 0) . '円×' . fmt_hm($b['class_min'] ?? 0) . '）', $fmt($b['class_pay'] ?? 0) . ' 円');
+      }
+    }
+    foreach ($bd as $b) {
+      if ((int)($b['ops_min'] ?? 0) > 0) {
+        $row('運営 ' . ($b['color'] ?? '') . '（' . $fmt($b['ops_rate'] ?? 0) . '円×' . fmt_hm($b['ops_min'] ?? 0) . '）', $fmt($b['ops_pay'] ?? 0) . ' 円');
+      }
+    }
+    $pdf->Ln(1);
+    $row('授業給与 計', $fmt($slip['class_pay']) . ' 円');
+    $row('運営給与 計', $fmt($slip['ops_pay']) . ' 円');
+  } else {
+    $row('授業時間 / 授業時給', fmt_hm($slip['class_min']) . ' / ' . $fmt($slip['class_rate']) . ' 円');
+    $row('運営時間 / 運営時給', fmt_hm($slip['ops_min']) . ' / ' . $fmt($slip['ops_rate']) . ' 円');
+    $pdf->Ln(1);
+    $row('授業給与', $fmt($slip['class_pay']) . ' 円');
+    $row('運営給与', $fmt($slip['ops_pay']) . ' 円');
+  }
   $row('交通費', $fmt($slip['transport']) . ' 円');
   $row('立替金', $fmt($slip['advance'] ?? 0) . ' 円');
   $row('支給合計', $fmt($slip['total']) . ' 円', true);
