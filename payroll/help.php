@@ -134,6 +134,7 @@ render_header('ヘルプ・使い方', $user, 'help.php');
       <div class="card-body">
         <p class="mb-2">「給与計算」で月を選ぶと、確定シフトと時給表から自動計算されます。</p>
         <ul class="mb-2">
+          <li><strong>立替金</strong>は講師ごとに金額を入力し「保存」すると、合計に加算され明細にも反映されます（発行後に変更した場合は「再発行」で更新）。</li>
           <li><span class="badge bg-primary">発行</span>（または「全員に発行」）で給与明細を発行します。</li>
           <li><span class="badge bg-secondary">PDF</span>で明細PDFを確認、<span class="badge bg-primary">メール送信</span>で講師に送付できます（PDF出力とメール送信は分かれています）。</li>
           <li><span class="badge bg-outline-secondary border">CSVダウンロード</span>／<span class="badge bg-outline-secondary border">コピー</span>で表計算ソフトに貼り付けできます。</li>
