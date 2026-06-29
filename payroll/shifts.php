@@ -99,6 +99,12 @@ $days->execute([$staffId, $month]);
 $days = $days->fetchAll();
 
 $templates = shift_templates_for($staffId);
+// 行ごとのテンプレ選択用 option（使い回し）
+$tplOptsHtml = '';
+foreach ($templates as $t) {
+  $tplOptsHtml .= '<option data-st="' . h(hm($t['start_time'])) . '" data-et="' . h(hm($t['end_time'])) . '" data-nt="' . h($t['note']) . '">'
+                . h($t['label']) . '（' . h(hm($t['start_time'])) . '〜' . h(hm($t['end_time'])) . '）</option>';
+}
 
 $wd = jp_weekdays();
 render_header('シフト可能登録', $user, 'shifts.php');
@@ -117,35 +123,8 @@ render_header('シフト可能登録', $user, 'shifts.php');
 
     <?php if (shift_templates_table_exists()): ?>
     <div class="card shadow-sm mb-3">
-      <div class="card-header">マイ シフトテンプレート <span class="text-muted small">よく使う時間帯を登録して、月間表へ一括入力</span></div>
+      <div class="card-header">マイ シフトテンプレート <span class="text-muted small">よく使う時間帯を登録すると、各日の「テンプレ」から選んで入力できます（直接入力も可）</span></div>
       <div class="card-body">
-        <?php if ($editable && $templates): ?>
-          <div class="row g-2 align-items-end mb-3 pb-3 border-bottom">
-            <div class="col-auto">
-              <label class="form-label small mb-0" for="tplSel">テンプレート</label>
-              <select id="tplSel" class="form-select form-select-sm" style="min-width:220px">
-                <?php foreach ($templates as $t): ?>
-                  <option data-st="<?= h(hm($t['start_time'])) ?>" data-et="<?= h(hm($t['end_time'])) ?>" data-nt="<?= h($t['note']) ?>"><?= h($t['label']) ?>（<?= h(hm($t['start_time'])) ?>〜<?= h(hm($t['end_time'])) ?>）</option>
-                <?php endforeach; ?>
-              </select>
-            </div>
-            <div class="col-auto">
-              <label class="form-label small mb-0 d-block">対象曜日</label>
-              <?php $dowLabels = ['日','月','火','水','木','金','土']; foreach ([1,2,3,4,5,6,0] as $dw): ?>
-                <label class="me-2 small text-nowrap"><input type="checkbox" class="tpl-dow" value="<?= $dw ?>" <?= ($dw >= 1 && $dw <= 5) ? 'checked' : '' ?>> <?= $dowLabels[$dw] ?></label>
-              <?php endforeach; ?>
-            </div>
-            <div class="col-auto">
-              <button type="button" class="btn btn-sm btn-success" onclick="applyTemplate(false)">空欄に適用</button>
-              <button type="button" class="btn btn-sm btn-outline-success" onclick="applyTemplate(true)">上書き適用</button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearDows()">対象曜日をクリア</button>
-            </div>
-            <div class="col-12"><div class="form-text small mb-0">※ 適用後に下の「保存する」を押すと反映されます。確定済みの日は変更されません。</div></div>
-          </div>
-        <?php elseif (!$editable): ?>
-          <p class="small text-muted mb-3">テンプレートの適用は、登録できる月（当月〜6か月先）で行えます。</p>
-        <?php endif; ?>
-
         <?php if ($templates): ?>
           <div class="d-flex flex-wrap gap-2 mb-3">
             <?php foreach ($templates as $t): ?>
@@ -185,7 +164,7 @@ render_header('シフト可能登録', $user, 'shifts.php');
           </div>
           <div class="table-responsive">
             <table class="table table-sm align-middle mb-0">
-              <thead class="table-light"><tr><th style="width:130px">日付</th><th style="width:40px">曜</th><th style="width:120px">開始</th><th style="width:120px">終了</th><th>メモ</th><th style="width:110px"></th></tr></thead>
+              <thead class="table-light"><tr><th style="width:130px">日付</th><th style="width:40px">曜</th><th style="width:120px">開始</th><th style="width:120px">終了</th><th>メモ</th><th style="width:160px">テンプレ／操作</th></tr></thead>
               <tbody id="shiftBody">
                 <?php foreach (month_days($month) as $d): $date = $d['date']; $a = $appByDate[$date] ?? null; ?>
                   <?php $rowcls = $d['dow'] === 0 ? 'table-danger-subtle' : ($d['dow'] === 6 ? 'table-primary-subtle' : ''); ?>
@@ -199,7 +178,10 @@ render_header('シフト可能登録', $user, 'shifts.php');
                       <td><input class="st form-control form-control-sm" type="time" name="start_time[<?= h($date) ?>]" value="<?= $a ? h(hm($a['start_time'])) : '' ?>"></td>
                       <td><input class="et form-control form-control-sm" type="time" name="end_time[<?= h($date) ?>]" value="<?= $a ? h(hm($a['end_time'])) : '' ?>"></td>
                       <td><input class="nt form-control form-control-sm" name="note[<?= h($date) ?>]" value="<?= $a ? h($a['note']) : '' ?>" placeholder="任意（校舎・備考）"></td>
-                      <td><button type="button" class="btn btn-sm btn-outline-secondary" onclick="copyPrev(this)">↑ 上をコピー</button></td>
+                      <td>
+                        <?php if ($templates): ?><select class="tpl-row form-select form-select-sm mb-1" onchange="applyRowTpl(this)" title="テンプレートから入力"><option value="">テンプレ…</option><?= $tplOptsHtml ?></select><?php endif; ?>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copyPrev(this)">↑ 上をコピー</button>
+                      </td>
                     <?php endif; ?>
                   </tr>
                 <?php endforeach; ?>
@@ -246,33 +228,17 @@ render_header('シフト可能登録', $user, 'shifts.php');
       var p = prev.querySelector('.nt'), c = tr.querySelector('.nt');
       if (p && c) c.value = p.value;
     }
-    function tplCheckedDows(){
-      var d={}; var cs=document.querySelectorAll('.tpl-dow:checked');
-      for (var i=0;i<cs.length;i++) d[cs[i].value]=1; return d;
-    }
-    function applyTemplate(overwrite){
-      var sel=document.getElementById('tplSel'); if(!sel) return;
-      var opt=sel.options[sel.selectedIndex]; if(!opt) return;
-      var st=opt.getAttribute('data-st')||'', et=opt.getAttribute('data-et')||'', nt=opt.getAttribute('data-nt')||'';
-      var dows=tplCheckedDows();
-      var rows=document.querySelectorAll('#shiftBody tr[data-date]'), n=0;
-      for (var i=0;i<rows.length;i++){
-        var tr=rows[i], s=tr.querySelector('.st'); if(!s) continue;            // 確定行は入力欄なし→スキップ
-        if(!dows[tr.getAttribute('data-dow')]) continue;
-        if(!overwrite && s.value) continue;                                    // 空欄のみ
-        s.value=st; var e=tr.querySelector('.et'); if(e) e.value=et;
-        var note=tr.querySelector('.nt'); if(note && (overwrite || !note.value)) note.value=nt;
-        n++;
-      }
-      if(n===0) alert('対象（選択した曜日'+(overwrite?'':'の空欄')+'）がありませんでした。');
-    }
-    function clearDows(){
-      var dows=tplCheckedDows(), rows=document.querySelectorAll('#shiftBody tr[data-date]');
-      for (var i=0;i<rows.length;i++){
-        var tr=rows[i], s=tr.querySelector('.st'); if(!s) continue;
-        if(!dows[tr.getAttribute('data-dow')]) continue;
-        s.value=''; var e=tr.querySelector('.et'); if(e) e.value='';
-      }
+    // 行ごとにテンプレートから入力（直接入力も可）
+    function applyRowTpl(sel){
+      var opt=sel.options[sel.selectedIndex];
+      if(!opt || !opt.value){ return; }                         // 「テンプレ…」プレースホルダ
+      var tr=sel.closest('tr'); if(!tr){ sel.selectedIndex=0; return; }
+      var s=tr.querySelector('.st'); if(!s){ sel.selectedIndex=0; return; }
+      s.value=opt.getAttribute('data-st')||'';
+      var e=tr.querySelector('.et'); if(e) e.value=opt.getAttribute('data-et')||'';
+      var n=tr.querySelector('.nt'), nt=opt.getAttribute('data-nt')||'';
+      if(n && nt) n.value=nt;                                    // メモはテンプレに値がある時だけ上書き
+      sel.selectedIndex=0;                                       // 続けて選べるよう戻す
     }
   </script>
 <?php render_footer(); ?>
