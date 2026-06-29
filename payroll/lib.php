@@ -96,6 +96,7 @@ function nav_links_for($user) {
   $links = [];
   if ($role === 'teacher') {
     $links['punch.php'] = '打刻';
+    $links['daily_report.php'] = '報告';
     $links['shifts.php'] = 'シフト可能登録';
     $links['payslips.php'] = '給与明細';
     $links['help.php'] = 'ヘルプ';
@@ -105,7 +106,8 @@ function nav_links_for($user) {
     $links['shifts_matrix.php'] = 'シフト表';
     $links['shifts_admin.php'] = 'シフト申請・確定';
     $links['shifts_done.php']  = '打刻・確定シフト';
-    $links['clockout.php']     = '退勤チェック・報告';
+    $links['clockout.php']     = '退勤チェック';
+    $links['daily_reports_admin.php'] = '報告一覧';
     $links['payroll.php']      = '給与計算';
   }
   if ($role === 'admin') {
@@ -123,7 +125,8 @@ function nav_groups_for($user) {
     'shifts_matrix.php' => 'シフト表',
     'shifts_admin.php'  => 'シフト申請・確定',
     'shifts_done.php'   => '打刻・確定シフト',
-    'clockout.php'      => '退勤チェック・報告',
+    'clockout.php'      => '退勤チェック',
+    'daily_reports_admin.php' => '報告一覧',
   ]];
   $pay = ['payroll.php' => '給与計算'];
   if ($role === 'admin') { $pay['rates.php'] = '時給表'; }
@@ -867,6 +870,12 @@ function clockout_checklist_table_exists() {
 function clockout_reports_table_exists() {
   static $ok = null;
   if ($ok === null) { try { db()->query("SELECT 1 FROM clockout_reports LIMIT 1"); $ok = true; } catch (Throwable $e) { $ok = false; } }
+  return $ok;
+}
+// 日報（報告フォーム）テーブルの有無
+function daily_reports_table_exists() {
+  static $ok = null;
+  if ($ok === null) { try { db()->query("SELECT 1 FROM daily_reports LIMIT 1"); $ok = true; } catch (Throwable $e) { $ok = false; } }
   return $ok;
 }
 // 指定教室の有効チェック項目（文字列の配列）
