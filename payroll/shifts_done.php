@@ -208,10 +208,13 @@ render_header('打刻・確定シフト', $user, 'shifts_done.php');
       <?php if ($days): ?>
       <script>
         (function(){
+          var KEY_SD='flt_shifts_done';
           var fs=document.getElementById('dStaff'), fr=document.getElementById('dRoom'),
               fd=document.getElementById('dDate'),
               fc=document.getElementById('dClear'), cnt=document.getElementById('dCount'),
               rows=[].slice.call(document.querySelectorAll('#daysBody tr[data-staff]'));
+          function persist(){ try{ sessionStorage.setItem(KEY_SD, JSON.stringify({s:fs?fs.value:'',rm:fr?fr.value:'',d:fd?fd.value:''})); }catch(e){} }
+          function restore(){ try{ var o=JSON.parse(sessionStorage.getItem(KEY_SD)||'{}'); if(fs&&o.s!=null)fs.value=o.s; if(fr&&o.rm!=null)fr.value=o.rm; if(fd&&o.d!=null)fd.value=o.d; }catch(e){} }
           function apply(){
             var s=fs?fs.value:'', rm=fr?fr.value:'', d=fd?fd.value:'', n=0;
             rows.forEach(function(r){
@@ -221,12 +224,13 @@ render_header('打刻・確定シフト', $user, 'shifts_done.php');
               r.style.display=ok?'':'none'; if(ok)n++;
             });
             if(cnt) cnt.textContent=(s||rm||d)?('表示 '+n+' 件'):'';
+            persist();
           }
           fs&&fs.addEventListener('change',apply);
           fr&&fr.addEventListener('change',apply);
           fd&&fd.addEventListener('input',apply);
           fc&&fc.addEventListener('click',function(){ if(fs)fs.value=''; if(fr)fr.value=''; if(fd)fd.value=''; apply(); });
-          apply();
+          restore(); apply();   // 保存後の再読み込みでも絞り込みを維持
         })();
       </script>
       <?php endif; ?>

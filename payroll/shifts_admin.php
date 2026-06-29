@@ -23,31 +23,30 @@ $hasRoom = isset($sdCols['room']);
 $teacherRooms = teacher_rooms_map();
 
 $flash = ''; $err = '';
+// 1件の申請を、入力された時間・教室・授業分で確定する（単体／一括で共用）。
+$confirmApp = function ($appId, $st, $et, $roomIn, $cls) use ($inScope, $teacherRooms, $hasRoom) {
+  $a = db()->prepare("SELECT * FROM shift_applications WHERE id=? AND status='申請中'");
+  $a->execute([(int)$appId]);
+  $a = $a->fetch();
+  if (!$a || !$inScope($a['staff_id'])) return false;
+  // 確定する時間（申請＝可能時間を既定とし、入力があればその時間で確定）
+  $st = trim((string)$st); $et = trim((string)$et);
+  $stN = preg_match('/^\d{1,2}:\d{2}$/', $st) ? $st : hm($a['start_time']);
+  $etN = preg_match('/^\d{1,2}:\d{2}$/', $et) ? $et : hm($a['end_time']);
+  $tot = shift_minutes($stN, $etN);
+  if ($tot <= 0) { $stN = hm($a['start_time']); $etN = hm($a['end_time']); $tot = shift_minutes($a['start_time'], $a['end_time']); }
+  $cls = max(0, (int)$cls); if ($cls > $tot) $cls = $tot;
+  $room = norm_room($a['staff_id'], $roomIn, $teacherRooms);
+  insert_shift_day($a['staff_id'], $a['work_date'], $stN, $etN, $cls, $a['note'], (int)$appId, $room, $hasRoom);
+  db()->prepare("UPDATE shift_applications SET status='確定' WHERE id=?")->execute([(int)$appId]);
+  return true;
+};
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check();
   $action = $_POST['action'] ?? '';
   if ($action === 'confirm') {
-    $appId = (int)($_POST['id'] ?? 0);
-    $cls   = max(0, (int)($_POST['class_minutes'] ?? 0));
-    $a = db()->prepare("SELECT * FROM shift_applications WHERE id=? AND status='申請中'");
-    $a->execute([$appId]);
-    $a = $a->fetch();
-    if ($a && $inScope($a['staff_id'])) {
-      // 確定する時間（申請＝可能時間を既定とし、入力があればその時間で確定）
-      $st = trim($_POST['start_time'] ?? '');
-      $et = trim($_POST['end_time'] ?? '');
-      $stN = preg_match('/^\d{1,2}:\d{2}$/', $st) ? $st : hm($a['start_time']);
-      $etN = preg_match('/^\d{1,2}:\d{2}$/', $et) ? $et : hm($a['end_time']);
-      $tot = shift_minutes($stN, $etN);
-      if ($tot <= 0) { // 不正な時間は申請時間にフォールバック
-        $stN = hm($a['start_time']); $etN = hm($a['end_time']);
-        $tot = shift_minutes($a['start_time'], $a['end_time']);
-      }
-      if ($cls > $tot) $cls = $tot;
-      $room = norm_room($a['staff_id'], $_POST['room'] ?? '', $teacherRooms);
-      insert_shift_day($a['staff_id'], $a['work_date'], $stN, $etN, $cls, $a['note'], $appId, $room, $hasRoom);
-      db()->prepare("UPDATE shift_applications SET status='確定' WHERE id=?")->execute([$appId]);
-      $flash = $room !== '' ? "シフトを確定しました（{$stN}〜{$etN}／教室：{$room}）。" : "シフトを確定しました（{$stN}〜{$etN}）。";
+    if ($confirmApp($_POST['id'] ?? 0, $_POST['start_time'] ?? '', $_POST['end_time'] ?? '', $_POST['room'] ?? '', $_POST['class_minutes'] ?? 0)) {
+      $flash = 'シフトを確定しました。';
     }
   } elseif ($action === 'reject') {
     $rid = (int)($_POST['id'] ?? 0);
@@ -57,25 +56,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       db()->prepare("UPDATE shift_applications SET status='却下' WHERE id=?")->execute([$rid]);
       $flash = '申請を却下しました。';
     }
-  } elseif ($action === 'confirm_month') {
-    // その月の申請中をまとめて確定シフト化（授業分は0で確定、後から各行で入力）
-    $m = valid_month($_POST['month'] ?? '');
-    $list = db()->prepare("SELECT * FROM shift_applications WHERE status='申請中' AND DATE_FORMAT(work_date,'%Y-%m')=?" . $scopeSql);
-    $list->execute(array_merge([$m], $scopeParams));
-    $rows = $list->fetchAll();
+  } elseif ($action === 'confirm_bulk') {
+    // 画面で「表示中」の各行を、入力された時間・教室・授業分で確定（絞り込みを尊重）
+    $payload = json_decode((string)($_POST['payload'] ?? ''), true);
+    if (!is_array($payload)) $payload = [];
     db()->beginTransaction();
     try {
-      $upd = db()->prepare("UPDATE shift_applications SET status='確定' WHERE id=?");
       $n = 0;
-      foreach ($rows as $a) {
-        if (!$inScope($a['staff_id'])) continue;
-        $room = norm_room($a['staff_id'], '', $teacherRooms); // 配属の先頭教室で確定（後で変更可）
-        insert_shift_day($a['staff_id'], $a['work_date'], $a['start_time'], $a['end_time'], 0, $a['note'], $a['id'], $room, $hasRoom);
-        $upd->execute([$a['id']]);
-        $n++;
+      foreach ($payload as $row) {
+        if (!is_array($row)) continue;
+        if ($confirmApp($row['id'] ?? 0, $row['start'] ?? '', $row['end'] ?? '', $row['room'] ?? '', $row['cls'] ?? 0)) $n++;
       }
       db()->commit();
-      $flash = "{$n}件をまとめて確定しました（時間・授業分は「打刻・確定シフト」で調整できます）。";
+      $flash = "{$n}件を確定しました（入力した時間・授業分で確定）。";
     } catch (Throwable $e) {
       db()->rollBack();
       $err = '一括確定に失敗しました: ' . $e->getMessage();
@@ -125,12 +118,8 @@ render_header('シフト申請・確定', $user, 'shifts_admin.php');
       <div class="card-header d-flex justify-content-between align-items-center">
         <span>申請中（<?= count($pending) ?>件）— 時間・授業分を入れて「確定」</span>
         <?php if ($pending): ?>
-          <form method="post" onsubmit="return confirm('<?= h($month) ?> の申請 <?= count($pending) ?>件を申請時間・授業分0でまとめて確定します。よろしいですか？（時間・授業分は後で「打刻・確定シフト」で調整できます）');">
-            <?= csrf_field() ?>
-            <input type="hidden" name="action" value="confirm_month">
-            <input type="hidden" name="month" value="<?= h($month) ?>">
-            <button class="btn btn-sm btn-success">この月をまとめて確定</button>
-          </form>
+          <button type="button" class="btn btn-sm btn-success" onclick="bulkConfirm()" title="絞り込み表示中の行を、入力した時間・授業分で確定します">表示中をまとめて確定</button>
+          <form method="post" id="bulkForm" class="d-none"><?= csrf_field() ?><input type="hidden" name="action" value="confirm_bulk"><input type="hidden" name="payload" id="bulkPayload"></form>
         <?php endif; ?>
       </div>
       <?php if ($pending): ?>
@@ -200,11 +189,14 @@ render_header('シフト申請・確定', $user, 'shifts_admin.php');
       </div>
       <?php if ($pending): ?>
       <script>
+        var KEY_SA='flt_shifts_admin';
         (function(){
           var fs=document.getElementById('fStaff'), fr=document.getElementById('fRoom'),
               fd=document.getElementById('fDate'),
               fc=document.getElementById('fClear'), cnt=document.getElementById('fCount'),
               rows=[].slice.call(document.querySelectorAll('#pendingBody tr[data-staff]'));
+          function persist(){ try{ sessionStorage.setItem(KEY_SA, JSON.stringify({s:fs?fs.value:'',rm:fr?fr.value:'',d:fd?fd.value:''})); }catch(e){} }
+          function restore(){ try{ var o=JSON.parse(sessionStorage.getItem(KEY_SA)||'{}'); if(fs&&o.s!=null)fs.value=o.s; if(fr&&o.rm!=null)fr.value=o.rm; if(fd&&o.d!=null)fd.value=o.d; }catch(e){} }
           function apply(){
             var s=fs?fs.value:'', rm=fr?fr.value:'', d=fd?fd.value:'', n=0;
             rows.forEach(function(r){
@@ -215,13 +207,28 @@ render_header('シフト申請・確定', $user, 'shifts_admin.php');
               r.style.display=ok?'':'none'; if(ok)n++;
             });
             if(cnt) cnt.textContent=(s||rm||d)?('表示 '+n+' 件'):'';
+            persist();
           }
           fs&&fs.addEventListener('change',apply);
           fr&&fr.addEventListener('change',apply);
           fd&&fd.addEventListener('input',apply);
           fc&&fc.addEventListener('click',function(){ if(fs)fs.value=''; if(fr)fr.value=''; if(fd)fd.value=''; apply(); });
-          apply();
+          restore(); apply();   // 保存後の再読み込みでも絞り込みを維持
         })();
+        // 「表示中をまとめて確定」：絞り込み表示中の行を、入力した時間・教室・授業分で確定
+        function bulkConfirm(){
+          var rows=document.querySelectorAll('#pendingBody tr[data-staff]'), list=[];
+          for (var i=0;i<rows.length;i++){
+            var tr=rows[i]; if(tr.style.display==='none') continue;
+            var f=tr.querySelector('form[id^="cf"]'); if(!f) continue;
+            var g=function(sel){ var el=f.querySelector(sel); return el?el.value:''; };
+            list.push({id:g('input[name=id]'),start:g('input[name=start_time]'),end:g('input[name=end_time]'),room:g('select[name=room]'),cls:g('input[name=class_minutes]')});
+          }
+          if(!list.length){ alert('表示中の申請がありません。'); return; }
+          if(!confirm('表示中の '+list.length+' 件を、入力した時間・授業分で確定します。よろしいですか？')) return;
+          document.getElementById('bulkPayload').value=JSON.stringify(list);
+          document.getElementById('bulkForm').submit();
+        }
       </script>
       <?php endif; ?>
     </div>
