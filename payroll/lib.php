@@ -426,15 +426,30 @@ function color_on_date($histList, $date, $fallback) {
   return $histList[count($histList) - 1]['c']; // $date が最古より前なら最古のカラー
 }
 
-function compute_month_payroll($month) {
-  // use_payroll 列の有無
-  $hasUsePayroll = false;
-  foreach (db()->query("SHOW COLUMNS FROM staff")->fetchAll() as $c) {
-    if ($c['Field'] === 'use_payroll') { $hasUsePayroll = true; }
+// 交通費。none=0 / transit=1日額×対象日数（月勤務8日以下は半額・9日以上で全額）/ car=現行ルール。
+//   $eligibleDays=送迎(交通費なし)日を除いた勤務日数、$workedDays=月の勤務日数。
+function compute_transport($mode, $daily, $eligibleDays, $workedDays) {
+  $eligibleDays = max(0, (int)$eligibleDays);
+  if ($mode === 'none') return 0;
+  if ($mode === 'transit') {
+    $base = max(0, (int)$daily) * $eligibleDays;
+    return ((int)$workedDays <= 8) ? (int) round($base / 2) : $base;
   }
+  return transport_allowance($eligibleDays); // car（既定）：現行ルールを対象日数に適用
+}
+
+function compute_month_payroll($month) {
+  // 任意列の有無（未マイグレーションでも動く）
+  $staffCols = []; foreach (db()->query("SHOW COLUMNS FROM staff")->fetchAll() as $c) { $staffCols[$c['Field']] = true; }
+  $hasUsePayroll = isset($staffCols['use_payroll']);
+  $hasTM = isset($staffCols['transport_mode']);
+  $sdCols = []; foreach (db()->query("SHOW COLUMNS FROM shift_days")->fetchAll() as $c) { $sdCols[$c['Field']] = true; }
+  $hasNT = isset($sdCols['no_transport']);
   $sql = "SELECT s.id, s.name, s.color_rank, s.departments"
        . ($hasUsePayroll ? ", s.use_payroll" : "")
+       . ($hasTM ? ", s.transport_mode, s.transport_daily" : "")
        . " , sd.work_date, sd.start_time, sd.end_time, sd.class_minutes"
+       . ($hasNT ? ", sd.no_transport" : "")
        . " FROM shift_days sd JOIN staff s ON s.id = sd.staff_id"
        . " WHERE DATE_FORMAT(sd.work_date,'%Y-%m') = ?"
        . " ORDER BY s.name, sd.work_date";
@@ -459,7 +474,9 @@ function compute_month_payroll($month) {
         'staff' => ['id' => $sid, 'name' => $r['name'], 'color_rank' => $r['color_rank'],
                     'departments' => $r['departments'],
                     'use_payroll' => $hasUsePayroll ? $r['use_payroll'] : 1],
-        'days_set' => [], 'by' => [],
+        'tmode' => $hasTM ? ($r['transport_mode'] ?: 'car') : 'car',
+        'tdaily' => $hasTM ? (int)$r['transport_daily'] : 0,
+        'days' => [], 'by' => [],
       ];
     }
     // 拘束6時間超は45分休憩を運営から控除（shift_work_breakdown）
@@ -472,7 +489,10 @@ function compute_month_payroll($month) {
     }
     $agg[$sid]['by'][$color]['class_min'] += $bd['class'];
     $agg[$sid]['by'][$color]['ops_min']   += $bd['ops'];
-    $agg[$sid]['days_set'][$r['work_date']] = true;
+    // 勤務日（送迎=交通費なしフラグを日単位でOR集約）
+    $d = $r['work_date'];
+    if (!isset($agg[$sid]['days'][$d])) { $agg[$sid]['days'][$d] = false; }
+    if ($hasNT && !empty($r['no_transport'])) { $agg[$sid]['days'][$d] = true; }
   }
 
   $advances = advances_for_month($month);
@@ -490,8 +510,9 @@ function compute_month_payroll($month) {
       if ($b['class_min'] > $repMax) { $repMax = $b['class_min']; $repRate = ['class_rate' => $b['class_rate'], 'ops_rate' => $b['ops_rate']]; }
     }
     if (!$breakdown) { $repRate = ['class_rate' => 1031, 'ops_rate' => 1031]; }
-    $days     = count($a['days_set']);
-    $transport = transport_allowance($days);
+    $days     = count($a['days']);
+    $eligibleDays = 0; foreach ($a['days'] as $excluded) { if (!$excluded) { $eligibleDays++; } }
+    $transport = compute_transport($a['tmode'], $a['tdaily'], $eligibleDays, $days);
     $advance  = (int)($advances[(int)$a['staff']['id']] ?? 0);
     $out[] = [
       'staff' => $a['staff'], 'days' => $days,
