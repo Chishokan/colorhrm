@@ -23,9 +23,17 @@ $st = db()->prepare("SELECT name, classrooms FROM staff WHERE id=? LIMIT 1");
 $st->execute([$staffId]);
 $me = $st->fetch();
 $rooms = classroom_list($me['classrooms'] ?? '');
-// 退勤教室ごとのチェックリスト
+// 退勤教室ごとのチェックリスト（日報＝報告で使用）
 $checklists = [];
 if (clockout_checklist_table_exists()) { foreach ($rooms as $rm) { $checklists[$rm] = clockout_checklist_for($rm); } }
+$hasChecklist = false; foreach ($checklists as $its) { if ($its) { $hasChecklist = true; break; } }
+// 本日すでに報告済みか
+$reportExists = function () use ($staffId, $today) {
+  if (!clockout_reports_table_exists()) return false;
+  $q = db()->prepare("SELECT 1 FROM clockout_reports WHERE staff_id=? AND work_date=? LIMIT 1");
+  $q->execute([$staffId, $today]);
+  return (bool)$q->fetchColumn();
+};
 
 // 本日の確定シフト
 $todayShift = null;
@@ -58,20 +66,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && attendance_table_exists()) {
     } elseif ($action === 'clock_out') {
       if (!$att || empty($att['clock_in'])) { $err = '先に出勤打刻をしてください。'; }
       elseif (!empty($att['clock_out'])) { $err = 'すでに退勤打刻済みです。'; }
-      else {
-        // 退勤チェックリスト（教室別）：項目があれば全チェック必須
-        $items = clockout_checklist_for($room);
-        $checked = (array)($_POST['chk'] ?? []);
-        $allOk = true;
-        foreach ($items as $it) { if (!in_array($it, $checked, true)) { $allOk = false; break; } }
-        if ($items && !$allOk) {
-          $err = '退勤チェックリストを全て確認してから退勤打刻してください。';
-        } else {
-          db()->prepare("UPDATE attendance SET clock_out=?, out_room=? WHERE id=?")->execute([$now, $room, (int)$att['id']]);
-          if ($items) { record_clockout_report($staffId, $today, $room, $items); }
-          $flash = "退勤を打刻しました（{$room} / " . hm($now) . "）。" . ($items ? 'チェック報告を記録しました。' : '');
-          if ($noShift) { $warn = '本日は確定シフトがありません（シフトなしで打刻しました）。'; }
-        }
+      elseif ($hasChecklist && !$reportExists()) {
+        $err = '先に「報告」を完了してから退勤打刻してください。';
+      } else {
+        db()->prepare("UPDATE attendance SET clock_out=?, out_room=? WHERE id=?")->execute([$now, $room, (int)$att['id']]);
+        $flash = "退勤を打刻しました（{$room} / " . hm($now) . "）。";
+        if ($noShift) { $warn = '本日は確定シフトがありません（シフトなしで打刻しました）。'; }
+      }
+    } elseif ($action === 'report') {
+      // 日報・報告（退勤チェック）：教室の項目を全確認して記録。退勤打刻ONの条件にもなる。
+      $items = clockout_checklist_for($room);
+      $checked = (array)($_POST['chk'] ?? []);
+      $allOk = true;
+      foreach ($items as $it) { if (!in_array($it, $checked, true)) { $allOk = false; break; } }
+      if ($items && !$allOk) {
+        $err = 'チェック項目を全て確認してから報告してください。';
+      } else {
+        record_clockout_report($staffId, $today, $room, $items);
+        $flash = '報告を記録しました。退勤打刻ができます。';
       }
     }
   }
@@ -84,6 +96,8 @@ if (attendance_table_exists()) {
   $a->execute([$staffId, $today]);
   $todayAtt = $a->fetch();
 }
+$reportedToday = $reportExists();
+$clockOutGate  = $hasChecklist && !$reportedToday; // 退勤打刻は報告完了後に押せる
 
 // 当月の確定シフト＋打刻（一覧・遅刻/早退/欠勤）
 $month = valid_month($_GET['m'] ?? date('Y-m'));
@@ -170,27 +184,16 @@ render_header('打刻', $user, 'punch.php');
                 <?php if ($todayAtt && !empty($todayAtt['clock_out'])): ?>
                   <div class="text-success">済 <?= h(hm($todayAtt['clock_out'])) ?>（<?= h($todayAtt['out_room']) ?>）</div>
                 <?php elseif ($todayAtt && !empty($todayAtt['clock_in'])): ?>
-                  <form method="post" id="coForm">
+                  <?php if ($clockOutGate): ?>
+                    <div class="small text-danger mb-1">先に下の「報告」を完了してください。</div>
+                  <?php endif; ?>
+                  <form method="post" class="d-flex gap-2">
                     <?= csrf_field() ?><input type="hidden" name="action" value="clock_out">
-                    <div class="d-flex gap-2">
-                      <select name="room" id="coRoom" class="form-select form-select-sm" required onchange="coRoomChange()">
-                        <option value="">退勤教室</option>
-                        <?php foreach ($rooms as $rm): ?><option value="<?= h($rm) ?>"><?= h($rm) ?></option><?php endforeach; ?>
-                      </select>
-                      <button id="coBtn" class="btn btn-sm btn-danger text-nowrap" disabled>退勤打刻</button>
-                    </div>
-                    <?php foreach ($rooms as $rm): $its = $checklists[$rm] ?? []; if (!$its) continue; ?>
-                      <div class="co-cl border rounded p-2 mt-2" data-room="<?= h($rm) ?>" style="display:none">
-                        <div class="small fw-bold mb-1">退勤チェック（<?= h($rm) ?>）</div>
-                        <?php foreach ($its as $i => $it): ?>
-                          <div class="form-check">
-                            <input class="form-check-input co-chk" type="checkbox" name="chk[]" value="<?= h($it) ?>" id="chk<?= (int)$i ?>_<?= h($rm) ?>" disabled onchange="coEval()">
-                            <label class="form-check-label small" for="chk<?= (int)$i ?>_<?= h($rm) ?>"><?= h($it) ?></label>
-                          </div>
-                        <?php endforeach; ?>
-                        <div class="form-text small mb-0">全てチェックすると退勤打刻が押せます。</div>
-                      </div>
-                    <?php endforeach; ?>
+                    <select name="room" class="form-select form-select-sm" required>
+                      <option value="">退勤教室</option>
+                      <?php foreach ($rooms as $rm): ?><option value="<?= h($rm) ?>"><?= h($rm) ?></option><?php endforeach; ?>
+                    </select>
+                    <button class="btn btn-sm btn-danger text-nowrap" <?= $clockOutGate ? 'disabled' : '' ?>>退勤打刻</button>
                   </form>
                 <?php else: ?>
                   <div class="text-muted small">出勤打刻後に押せます</div>
@@ -201,6 +204,39 @@ render_header('打刻', $user, 'punch.php');
         <?php endif; ?>
       </div>
     </div>
+
+    <?php if (clockout_checklist_table_exists() && $rooms && $hasChecklist): ?>
+    <div class="card shadow-sm mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>報告（日報）</span>
+        <?php if ($reportedToday): ?><span class="badge bg-success">本日 報告済み</span><?php endif; ?>
+      </div>
+      <div class="card-body">
+        <p class="small text-muted mb-2">退勤前の点検報告です。教室を選び、項目を全てチェックして「報告する」を押してください（報告すると退勤打刻が押せます）。</p>
+        <form method="post" id="rpForm">
+          <?= csrf_field() ?><input type="hidden" name="action" value="report">
+          <div class="d-flex gap-2 align-items-center mb-2">
+            <select name="room" id="rpRoom" class="form-select form-select-sm" style="max-width:220px" required onchange="rpRoomChange()">
+              <option value="">教室を選択</option>
+              <?php foreach ($rooms as $rm): if (empty($checklists[$rm])) continue; ?><option value="<?= h($rm) ?>"><?= h($rm) ?></option><?php endforeach; ?>
+            </select>
+            <button id="rpBtn" class="btn btn-sm btn-primary text-nowrap" disabled>報告する</button>
+          </div>
+          <?php foreach ($rooms as $rm): $its = $checklists[$rm] ?? []; if (!$its) continue; ?>
+            <div class="rp-cl border rounded p-2 mb-2" data-room="<?= h($rm) ?>" style="display:none">
+              <div class="small fw-bold mb-1"><?= h($rm) ?> の点検項目</div>
+              <?php foreach ($its as $i => $it): ?>
+                <div class="form-check">
+                  <input class="form-check-input rp-chk" type="checkbox" name="chk[]" value="<?= h($it) ?>" id="rpc<?= (int)$i ?>_<?= h($rm) ?>" disabled onchange="rpEval()">
+                  <label class="form-check-label small" for="rpc<?= (int)$i ?>_<?= h($rm) ?>"><?= h($it) ?></label>
+                </div>
+              <?php endforeach; ?>
+            </div>
+          <?php endforeach; ?>
+        </form>
+      </div>
+    </div>
+    <?php endif; ?>
 
     <div class="card shadow-sm">
       <div class="card-header d-flex justify-content-between align-items-center">
@@ -233,32 +269,32 @@ render_header('打刻', $user, 'punch.php');
     </div>
   </div>
   <script>
-    function coBlock(room){
-      var bs=document.querySelectorAll('#coForm .co-cl');
+    function rpBlock(room){
+      var bs=document.querySelectorAll('#rpForm .rp-cl');
       for(var i=0;i<bs.length;i++){ if(bs[i].getAttribute('data-room')===room) return bs[i]; }
       return null;
     }
-    function coRoomChange(){
-      var sel=document.getElementById('coRoom'); if(!sel) return;
-      var room=sel.value, bs=document.querySelectorAll('#coForm .co-cl');
+    function rpRoomChange(){
+      var sel=document.getElementById('rpRoom'); if(!sel) return;
+      var room=sel.value, bs=document.querySelectorAll('#rpForm .rp-cl');
       for(var i=0;i<bs.length;i++){
         var on=bs[i].getAttribute('data-room')===room;
         bs[i].style.display=on?'':'none';
-        var cs=bs[i].querySelectorAll('.co-chk');
+        var cs=bs[i].querySelectorAll('.rp-chk');
         for(var j=0;j<cs.length;j++){ cs[j].disabled=!on; }   // 非選択教室は送信しない
       }
-      coEval();
+      rpEval();
     }
-    function coEval(){
-      var sel=document.getElementById('coRoom'), btn=document.getElementById('coBtn'); if(!sel||!btn) return;
+    function rpEval(){
+      var sel=document.getElementById('rpRoom'), btn=document.getElementById('rpBtn'); if(!sel||!btn) return;
       var room=sel.value;
-      if(!room){ btn.disabled=true; btn.textContent='退勤打刻'; return; }
-      var block=coBlock(room);
-      if(!block){ btn.disabled=false; btn.textContent='退勤打刻'; return; } // チェックリスト無し
-      var boxes=block.querySelectorAll('.co-chk'), all=true;
+      if(!room){ btn.disabled=true; btn.textContent='報告する'; return; }
+      var block=rpBlock(room);
+      if(!block){ btn.disabled=false; btn.textContent='報告する'; return; }
+      var boxes=block.querySelectorAll('.rp-chk'), all=true;
       for(var i=0;i<boxes.length;i++){ if(!boxes[i].checked){ all=false; break; } }
       btn.disabled=!all;
-      btn.textContent=all?'チェック完了！退勤打刻':'退勤打刻';
+      btn.textContent=all?'チェック完了！報告する':'報告する';
     }
   </script>
 <?php render_footer(); ?>
