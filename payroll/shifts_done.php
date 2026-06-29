@@ -24,6 +24,7 @@ if (is_array($scope)) {
 $sdCols = [];
 foreach (db()->query("SHOW COLUMNS FROM shift_days")->fetchAll() as $c) { $sdCols[$c['Field']] = true; }
 $hasRoom = isset($sdCols['room']);
+$hasNoTransport = isset($sdCols['no_transport']);
 $teacherRooms = teacher_rooms_map();
 
 $flash = ''; $err = '';
@@ -58,6 +59,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         db()->prepare("UPDATE shift_days SET room=?, start_time=?, end_time=?, class_minutes=? WHERE id=?")->execute([$room, $st, $et, $cls, $id]);
       } else {
         db()->prepare("UPDATE shift_days SET start_time=?, end_time=?, class_minutes=? WHERE id=?")->execute([$st, $et, $cls, $id]);
+      }
+      if ($hasNoTransport) {
+        db()->prepare("UPDATE shift_days SET no_transport=? WHERE id=?")->execute([isset($_POST['no_transport']) ? 1 : 0, $id]);
       }
       $flash = '確定シフトを更新しました。';
     } else { $err = '終了は開始より後、または権限のあるシフトを指定してください。'; }
@@ -170,7 +174,7 @@ render_header('打刻・確定シフト', $user, 'shifts_done.php');
       <?php endif; ?>
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
-          <thead class="table-light"><tr><th>講師</th><th>日付</th><th>教室</th><th style="width:104px">開始</th><th style="width:104px">終了</th><th class="text-end">稼働</th><th style="width:104px">授業(分)</th><th class="text-end">運営</th><th>出勤</th><th>退勤</th><th>判定</th><th></th></tr></thead>
+          <thead class="table-light"><tr><th>講師</th><th>日付</th><th>教室</th><th style="width:104px">開始</th><th style="width:104px">終了</th><th class="text-end">稼働</th><th style="width:104px">授業(分)</th><th class="text-end">運営</th><th>出勤</th><th>退勤</th><th>判定</th><?php if ($hasNoTransport): ?><th title="送迎等で交通費なしの日">送迎</th><?php endif; ?><th></th></tr></thead>
           <tbody id="daysBody">
             <?php foreach ($days as $d): $bd = shift_work_breakdown($d['start_time'],$d['end_time'],$d['class_minutes']);
               $att = $attBy[$d['staff_id'].'|'.$d['work_date']] ?? null;
@@ -195,13 +199,14 @@ render_header('打刻・確定シフト', $user, 'shifts_done.php');
                 <td class="small"><?= $att && !empty($att['clock_in']) ? h(hm($att['clock_in'])).'<br><span class="text-muted">'.h($att['in_room']).'</span>' : '—' ?></td>
                 <td class="small"><?= $att && !empty($att['clock_out']) ? h(hm($att['clock_out'])).'<br><span class="text-muted">'.h($att['out_room']).'</span>' : '—' ?></td>
                 <td><?= attendance_judgment_cell($d['start_time'], $d['end_time'], $att, $d['work_date']) ?></td>
+                <?php if ($hasNoTransport): ?><td class="text-center"><input form="ud<?= (int)$d['id'] ?>" type="checkbox" name="no_transport" value="1" <?= !empty($d['no_transport']) ? 'checked' : '' ?> title="交通費なし（送迎日 等）"></td><?php endif; ?>
                 <td class="text-end text-nowrap">
                   <button form="ud<?= (int)$d['id'] ?>" class="btn btn-sm btn-outline-primary">保存</button>
                   <form method="post" class="d-inline" onsubmit="return confirm('削除しますか？');"><?= csrf_field() ?><input type="hidden" name="action" value="delete_day"><input type="hidden" name="id" value="<?= (int)$d['id'] ?>"><button class="btn btn-sm btn-link text-danger p-0">削除</button></form>
                 </td>
               </tr>
             <?php endforeach; ?>
-            <?php if (!$days): ?><tr><td colspan="12" class="text-center text-muted py-3">確定シフトはありません。</td></tr><?php endif; ?>
+            <?php if (!$days): ?><tr><td colspan="<?= $hasNoTransport ? 13 : 12 ?>" class="text-center text-muted py-3">確定シフトはありません。</td></tr><?php endif; ?>
           </tbody>
         </table>
       </div>
