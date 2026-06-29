@@ -48,11 +48,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!in_array($color, color_ranks(), true)) {
       $err = 'カラーの指定が不正です。';
     } else {
-      $sql = "UPDATE staff SET color_rank = ?"
-           . (isset($cols['color_certified_date']) ? ", color_certified_date = CURDATE()" : "")
-           . " WHERE id = ?";
-      db()->prepare($sql)->execute([$color, $id]);
-      $flash = "カラーを {$color} に更新しました（認定日: 本日）。";
+      $eff = trim((string)($_POST['effective_date'] ?? ''));
+      if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $eff)) { $eff = date('Y-m-d'); }
+      // カラー履歴に記録（適用日付き。同じ適用日は上書き）。テーブルが無ければ従来動作にフォールバック。
+      $histOk = false;
+      try {
+        db()->prepare("INSERT INTO staff_color_history (tenant_id, staff_id, color, effective_date) VALUES (1,?,?,?)
+                       ON DUPLICATE KEY UPDATE color=VALUES(color)")->execute([$id, $color, $eff]);
+        $histOk = true;
+      } catch (Throwable $e) { $histOk = false; }
+
+      // staff.color_rank（現在のカラー）は「本日時点で有効な履歴」に合わせる
+      $curColor = $color; $curDate = $eff;
+      if ($histOk) {
+        $cur = db()->prepare("SELECT color, effective_date FROM staff_color_history WHERE staff_id=? AND effective_date<=CURDATE() ORDER BY effective_date DESC, id DESC LIMIT 1");
+        $cur->execute([$id]); $crow = $cur->fetch();
+        if ($crow) { $curColor = $crow['color']; $curDate = $crow['effective_date']; }
+      }
+      $sql = "UPDATE staff SET color_rank = ?" . (isset($cols['color_certified_date']) ? ", color_certified_date = ?" : "") . " WHERE id = ?";
+      $params = isset($cols['color_certified_date']) ? [$curColor, $curDate, $id] : [$curColor, $id];
+      db()->prepare($sql)->execute($params);
+
+      if ($eff > date('Y-m-d')) {
+        $flash = "カラー変更を予約しました（{$color}／適用日 {$eff}）。現在は {$curColor} のままで、適用日以降の勤務から新単価になります。";
+      } else {
+        $flash = "カラーを {$curColor} に更新しました（適用日 {$curDate}）。適用日以降の勤務から新単価で計算されます。";
+      }
     }
   } elseif ($action === 'resign') {
     $sql = "UPDATE staff SET is_active = 0"
@@ -127,8 +148,8 @@ render_header('講師: ' . $s['name'], $user, 'index.php');
             <?= goal_bar_html($gs) ?>
           </div>
           <div class="col-md-6">
-            <form method="post" class="d-flex align-items-end gap-2 justify-content-md-end"
-                  onsubmit="return confirm('カラーを更新します（認定日=本日）。よろしいですか？');">
+            <form method="post" class="d-flex align-items-end gap-2 justify-content-md-end flex-wrap"
+                  onsubmit="return confirm('カラーを更新します。適用日以降の勤務から新しいColor時給で計算されます。よろしいですか？');">
               <?= csrf_field() ?>
               <input type="hidden" name="action" value="update_color">
               <div>
@@ -139,11 +160,16 @@ render_header('講師: ' . $s['name'], $user, 'index.php');
                   <?php endforeach; ?>
                 </select>
               </div>
+              <div>
+                <label class="form-label small mb-0">適用日</label>
+                <input type="date" name="effective_date" value="<?= h(date('Y-m-d')) ?>" class="form-control form-control-sm" style="width:150px" title="この日以降の勤務から新単価">
+              </div>
               <button class="btn btn-sm btn-primary">更新</button>
             </form>
-            <?php if (!empty($s['color_certified_date'])): ?>
-              <div class="small text-muted mt-1 text-md-end">現カラー認定日: <?= h($s['color_certified_date']) ?></div>
-            <?php endif; ?>
+            <div class="small text-muted mt-1 text-md-end">
+              <?php if (!empty($s['color_certified_date'])): ?>現カラー認定日: <?= h($s['color_certified_date']) ?><br><?php endif; ?>
+              <span style="font-size:11px">※ 適用日以降の勤務分に新しいColor時給が反映されます（給与計算は勤務日ごとに判定）。</span>
+            </div>
           </div>
         </div>
       </div>
