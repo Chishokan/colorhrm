@@ -67,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && attendance_table_exists()) {
       if (!$att || empty($att['clock_in'])) { $err = '先に出勤打刻をしてください。'; }
       elseif (!empty($att['clock_out'])) { $err = 'すでに退勤打刻済みです。'; }
       elseif ($hasChecklist && !$reportExists()) {
-        $err = '先に「報告」を完了してから退勤打刻してください。';
+        $err = '先に「退勤チェック」を完了してから退勤打刻してください。';
       } else {
         db()->prepare("UPDATE attendance SET clock_out=?, out_room=? WHERE id=?")->execute([$now, $room, (int)$att['id']]);
         $flash = "退勤を打刻しました（{$room} / " . hm($now) . "）。";
@@ -83,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && attendance_table_exists()) {
         $err = 'チェック項目を全て確認してから報告してください。';
       } else {
         record_clockout_report($staffId, $today, $room, $items);
-        $flash = '報告を記録しました。退勤打刻ができます。';
+        $flash = '退勤チェックを完了しました。退勤打刻ができます。';
       }
     }
   }
@@ -141,7 +141,10 @@ function flag_badges($flags) {
 render_header('打刻', $user, 'punch.php');
 ?>
   <div class="container py-4" style="max-width:820px">
-    <h4 class="mb-3">打刻</h4>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h4 class="mb-0">打刻</h4>
+      <a href="daily_report.php" class="btn btn-sm btn-primary">📝 報告（日報）</a>
+    </div>
     <?php if (!attendance_table_exists()): ?>
       <div class="alert alert-warning">打刻はまだ利用できません（<code>migrations/014_attendance.sql</code> 未適用）。</div>
     <?php endif; ?>
@@ -185,7 +188,7 @@ render_header('打刻', $user, 'punch.php');
                   <div class="text-success">済 <?= h(hm($todayAtt['clock_out'])) ?>（<?= h($todayAtt['out_room']) ?>）</div>
                 <?php elseif ($todayAtt && !empty($todayAtt['clock_in'])): ?>
                   <?php if ($clockOutGate): ?>
-                    <div class="small text-danger mb-1">先に下の「報告」を完了してください。</div>
+                    <div class="small text-danger mb-1">先に下の「退勤チェック」を完了してください。</div>
                   <?php endif; ?>
                   <form method="post" class="d-flex gap-2">
                     <?= csrf_field() ?><input type="hidden" name="action" value="clock_out">
@@ -208,11 +211,11 @@ render_header('打刻', $user, 'punch.php');
     <?php if (clockout_checklist_table_exists() && $rooms && $hasChecklist): ?>
     <div class="card shadow-sm mb-4">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <span>報告（日報）</span>
-        <?php if ($reportedToday): ?><span class="badge bg-success">本日 報告済み</span><?php endif; ?>
+        <span>退勤チェック（退勤前点検）</span>
+        <?php if ($reportedToday): ?><span class="badge bg-success">本日 点検済み</span><?php endif; ?>
       </div>
       <div class="card-body">
-        <p class="small text-muted mb-2">退勤前の点検報告です。教室を選び、項目を全てチェックして「報告する」を押してください（報告すると退勤打刻が押せます）。</p>
+        <p class="small text-muted mb-2">退勤前の点検です。教室を選び、項目を全てチェックして「チェック完了」を押してください（退勤打刻ができます）。</p>
         <form method="post" id="rpForm">
           <?= csrf_field() ?><input type="hidden" name="action" value="report">
           <div class="d-flex gap-2 align-items-center mb-2">
@@ -220,7 +223,7 @@ render_header('打刻', $user, 'punch.php');
               <option value="">教室を選択</option>
               <?php foreach ($rooms as $rm): if (empty($checklists[$rm])) continue; ?><option value="<?= h($rm) ?>"><?= h($rm) ?></option><?php endforeach; ?>
             </select>
-            <button id="rpBtn" class="btn btn-sm btn-primary text-nowrap" disabled>報告する</button>
+            <button id="rpBtn" class="btn btn-sm btn-primary text-nowrap" disabled>チェック完了</button>
           </div>
           <?php foreach ($rooms as $rm): $its = $checklists[$rm] ?? []; if (!$its) continue; ?>
             <div class="rp-cl border rounded p-2 mb-2" data-room="<?= h($rm) ?>" style="display:none">
@@ -288,13 +291,13 @@ render_header('打刻', $user, 'punch.php');
     function rpEval(){
       var sel=document.getElementById('rpRoom'), btn=document.getElementById('rpBtn'); if(!sel||!btn) return;
       var room=sel.value;
-      if(!room){ btn.disabled=true; btn.textContent='報告する'; return; }
+      if(!room){ btn.disabled=true; btn.textContent='チェック完了'; return; }
       var block=rpBlock(room);
-      if(!block){ btn.disabled=false; btn.textContent='報告する'; return; }
+      if(!block){ btn.disabled=false; btn.textContent='チェック完了'; return; }
       var boxes=block.querySelectorAll('.rp-chk'), all=true;
       for(var i=0;i<boxes.length;i++){ if(!boxes[i].checked){ all=false; break; } }
       btn.disabled=!all;
-      btn.textContent=all?'チェック完了！報告する':'報告する';
+      btn.textContent=all?'チェック完了！':'チェック完了';
     }
   </script>
 <?php render_footer(); ?>
