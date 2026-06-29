@@ -12,9 +12,11 @@ $err   = '';
 
 // 編集可能なプロフィール項目（実在カラムのみ採用）。カラーは昇格処理で別管理。
 $editable = ['name', 'departments', 'school', 'employment_type', 'hire_date',
-             'target_rank', 'target_date', 'mentor', 'recruiting_media', 'referrer', 'email', 'use_payroll'];
+             'target_rank', 'target_date', 'mentor', 'recruiting_media', 'referrer', 'email', 'use_payroll',
+             'transport_mode', 'transport_daily'];
 $dateCols = ['hire_date', 'target_date'];
 $boolCols = ['use_payroll'];
+$intCols  = ['transport_daily'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check();
@@ -27,8 +29,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       if (!isset($cols[$f])) continue; // 実在しない列はスキップ
       if (in_array($f, $boolCols, true)) {
         $set[] = "$f = ?"; $vals[] = isset($_POST[$f]) ? 1 : 0;
+      } elseif (in_array($f, $intCols, true)) {
+        $set[] = "$f = ?"; $vals[] = max(0, (int)($_POST[$f] ?? 0));
       } else {
         $v = trim($_POST[$f] ?? '');
+        if ($f === 'transport_mode' && !in_array($v, ['none', 'transit', 'car'], true)) { $v = 'car'; }
         if (in_array($f, $dateCols, true)) { $v = ($v === '') ? null : $v; }
         $set[] = "$f = ?"; $vals[] = $v;
       }
@@ -266,6 +271,21 @@ render_header('講師: ' . $s['name'], $user, 'index.php');
             <label class="form-label small mb-0">紹介者</label>
             <input name="referrer" value="<?= h($val('referrer')) ?>" class="form-control form-control-sm">
           </div>
+          <?php if (isset($cols['transport_mode'])): ?>
+          <div class="col-md-3">
+            <label class="form-label small mb-0">交通費区分</label>
+            <select name="transport_mode" class="form-select form-select-sm">
+              <option value="car"     <?= (($val('transport_mode') ?: 'car') === 'car') ? 'selected' : '' ?>>車・バイク（現行ルール）</option>
+              <option value="transit" <?= $val('transport_mode') === 'transit' ? 'selected' : '' ?>>公共交通（バス・電車）</option>
+              <option value="none"    <?= $val('transport_mode') === 'none' ? 'selected' : '' ?>>徒歩・定期圏内（なし）</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small mb-0">1日あたり交通費（公共交通）</label>
+            <input name="transport_daily" type="number" min="0" value="<?= (int)$val('transport_daily') ?>" class="form-control form-control-sm" title="片道×往復など1日分の実費（円）">
+            <div class="form-text small" style="font-size:11px">公共交通のみ使用。月8日以下は半額・9日以上で全額。</div>
+          </div>
+          <?php endif; ?>
           <?php if (isset($cols['use_payroll'])): ?>
           <div class="col-md-3 d-flex align-items-end">
             <div class="form-check"><input class="form-check-input" type="checkbox" name="use_payroll" id="up" <?= !empty($s['use_payroll']) ? 'checked' : '' ?>><label class="form-check-label small" for="up">給与システム対象</label></div>
