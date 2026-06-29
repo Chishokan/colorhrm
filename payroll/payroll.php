@@ -49,6 +49,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_act, ['issue_all', 'issu
   }
 }
 
+// 立替金の保存（講師×月の手入力。発行済み明細に反映するには再発行が必要）
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $_act === 'save_advance') {
+  csrf_check();
+  $sid = (int)($_POST['staff_id'] ?? 0);
+  $amt = max(0, (int)($_POST['amount'] ?? 0));
+  if ($scope !== null && !in_array($sid, $scope, true)) { $err = '担当教室外の講師は操作できません。'; }
+  elseif (!staff_advances_table_exists()) { $err = '立替金テーブル（staff_advances）がありません。migrations/017_staff_advances.sql を実行してください。'; }
+  else { set_staff_advance($sid, $month, $amt); $flash = '立替金を保存しました（発行済み明細に反映するには「再発行」してください）。'; }
+}
+
 $rows  = compute_month_payroll($month);
 if ($scope !== null) { $rows = array_values(array_filter($rows, fn($r) => in_array((int)$r['staff']['id'], $scope, true))); }
 
@@ -66,12 +76,12 @@ if (($_GET['export'] ?? '') === 'csv') {
   header('Content-Disposition: attachment; filename="payroll_' . $month . '.csv"');
   echo "\xEF\xBB\xBF"; // Excel 用 BOM
   $out = fopen('php://output', 'w');
-  fputcsv($out, ['講師', 'カラー', '部門', '勤務日数', '授業分', '運営分', '授業時給', '運営時給', '授業給与', '運営給与', '交通費', '合計']);
+  fputcsv($out, ['講師', 'カラー', '部門', '勤務日数', '授業分', '運営分', '授業時給', '運営時給', '授業給与', '運営給与', '交通費', '立替金', '合計']);
   foreach ($rows as $r) {
     fputcsv($out, [
       $r['staff']['name'], $r['staff']['color_rank'], $r['staff']['departments'],
       $r['days'], $r['class_min'], $r['ops_min'], $r['class_rate'], $r['ops_rate'],
-      $r['class_pay'], $r['ops_pay'], $r['transport'], $r['total'],
+      $r['class_pay'], $r['ops_pay'], $r['transport'], ($r['advance'] ?? 0), $r['total'],
     ]);
   }
   fclose($out);
@@ -81,14 +91,14 @@ if (($_GET['export'] ?? '') === 'csv') {
 $prev = date('Y-m', strtotime($month . '-01 -1 month'));
 $next = date('Y-m', strtotime($month . '-01 +1 month'));
 
-$sumClass = $sumOps = $sumTrans = $sumTotal = 0;
-foreach ($rows as $r) { $sumClass += $r['class_pay']; $sumOps += $r['ops_pay']; $sumTrans += $r['transport']; $sumTotal += $r['total']; }
+$sumClass = $sumOps = $sumTrans = $sumAdv = $sumTotal = 0;
+foreach ($rows as $r) { $sumClass += $r['class_pay']; $sumOps += $r['ops_pay']; $sumTrans += $r['transport']; $sumAdv += ($r['advance'] ?? 0); $sumTotal += $r['total']; }
 
 // コピー用TSV（振込連携などへの貼り付け用）
-$tsv = "講師\tカラー\t勤務日数\t授業給与\t運営給与\t交通費\t合計\n";
+$tsv = "講師\tカラー\t勤務日数\t授業給与\t運営給与\t交通費\t立替金\t合計\n";
 foreach ($rows as $r) {
   $tsv .= $r['staff']['name'] . "\t" . $r['staff']['color_rank'] . "\t" . $r['days'] . "\t"
-        . $r['class_pay'] . "\t" . $r['ops_pay'] . "\t" . $r['transport'] . "\t" . $r['total'] . "\n";
+        . $r['class_pay'] . "\t" . $r['ops_pay'] . "\t" . $r['transport'] . "\t" . ($r['advance'] ?? 0) . "\t" . $r['total'] . "\n";
 }
 
 render_header('給与計算', $user, 'payroll.php');
@@ -116,7 +126,8 @@ render_header('給与計算', $user, 'payroll.php');
     </div>
     <?php if ($flash): ?><div class="alert alert-success py-2"><?= h($flash) ?></div><?php endif; ?>
     <?php if ($err): ?><div class="alert alert-danger py-2"><?= h($err) ?></div><?php endif; ?>
-    <p class="text-muted small">確定シフト（シフト申請・確定で確定したもの）と時給表から計算します。<strong>拘束6時間超は45分の休憩を運営時間から自動控除</strong>。授業給与=round(授業分/60×授業時給)、運営給与=round(運営分/60×運営時給)、交通費は勤務日数で算定（≤5日:日数×200／超過:切上げ(日数/5)×1000）。</p>
+    <?php if (!staff_advances_table_exists()): ?><div class="alert alert-warning py-2 small">立替金を保存するには <code>migrations/017_staff_advances.sql</code> を実行してください（未実施の間は立替金は0で計算されます）。</div><?php endif; ?>
+    <p class="text-muted small">確定シフト（シフト申請・確定で確定したもの）と時給表から計算します。<strong>拘束6時間超は45分の休憩を運営時間から自動控除</strong>。授業給与=round(授業分/60×授業時給)、運営給与=round(運営分/60×運営時給)、交通費は勤務日数で算定（≤5日:日数×200／超過:切上げ(日数/5)×1000）。<strong>立替金</strong>は講師ごとに手入力（合計に加算）。</p>
 
     <div class="card shadow-sm">
       <div class="table-responsive">
@@ -126,7 +137,7 @@ render_header('給与計算', $user, 'payroll.php');
               <th>講師</th><th>カラー</th><th class="text-end">勤務日数</th>
               <th class="text-end">授業</th><th class="text-end">運営</th>
               <th class="text-end">授業給与</th><th class="text-end">運営給与</th>
-              <th class="text-end">交通費</th><th class="text-end">合計</th><th>明細</th>
+              <th class="text-end">交通費</th><th class="text-end" style="min-width:120px">立替金</th><th class="text-end">合計</th><th>明細</th>
             </tr>
           </thead>
           <tbody>
@@ -140,6 +151,13 @@ render_header('給与計算', $user, 'payroll.php');
                 <td class="text-end">¥<?= number_format($r['class_pay']) ?></td>
                 <td class="text-end">¥<?= number_format($r['ops_pay']) ?></td>
                 <td class="text-end">¥<?= number_format($r['transport']) ?></td>
+                <td class="text-end">
+                  <form method="post" class="d-flex gap-1 justify-content-end align-items-center">
+                    <?= csrf_field() ?><input type="hidden" name="action" value="save_advance"><input type="hidden" name="staff_id" value="<?= (int)$r['staff']['id'] ?>">
+                    <input type="number" name="amount" value="<?= (int)($r['advance'] ?? 0) ?>" min="0" step="1" class="form-control form-control-sm text-end" style="width:84px" title="立替金（円）">
+                    <button class="btn btn-sm btn-outline-secondary px-2">保存</button>
+                  </form>
+                </td>
                 <td class="text-end fw-bold">¥<?= number_format($r['total']) ?></td>
                 <td class="text-nowrap">
                   <?php $sl = $slipBy[(int)$r['staff']['id']] ?? null; ?>
@@ -155,13 +173,14 @@ render_header('給与計算', $user, 'payroll.php');
               </tr>
             <?php endforeach; ?>
             <?php if (!$rows): ?>
-              <tr><td colspan="10" class="text-center text-muted py-4">この月の確定シフトはありません。<a href="shifts_admin.php?m=<?= h($month) ?>">シフト申請・確定</a>で確定してください。</td></tr>
+              <tr><td colspan="11" class="text-center text-muted py-4">この月の確定シフトはありません。<a href="shifts_admin.php?m=<?= h($month) ?>">シフト申請・確定</a>で確定してください。</td></tr>
             <?php else: ?>
               <tr class="table-light fw-bold">
                 <td colspan="5" class="text-end">合計</td>
                 <td class="text-end">¥<?= number_format($sumClass) ?></td>
                 <td class="text-end">¥<?= number_format($sumOps) ?></td>
                 <td class="text-end">¥<?= number_format($sumTrans) ?></td>
+                <td class="text-end">¥<?= number_format($sumAdv) ?></td>
                 <td class="text-end">¥<?= number_format($sumTotal) ?></td>
                 <td></td>
               </tr>

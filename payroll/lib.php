@@ -414,6 +414,7 @@ function compute_month_payroll($month) {
     $agg[$sid]['days_set'][$r['work_date']] = true;
   }
 
+  $advances = advances_for_month($month);
   $out = [];
   foreach ($agg as $a) {
     $rate = compute_class_rate($a['staff']);
@@ -421,12 +422,14 @@ function compute_month_payroll($month) {
     $opsPay   = (int) round($a['ops_min']   / 60 * $rate['ops_rate']);
     $days     = count($a['days_set']);
     $transport = transport_allowance($days);
+    $advance  = (int)($advances[(int)$a['staff']['id']] ?? 0);
     $out[] = [
       'staff' => $a['staff'], 'days' => $days,
       'class_min' => $a['class_min'], 'ops_min' => $a['ops_min'],
       'class_rate' => $rate['class_rate'], 'ops_rate' => $rate['ops_rate'],
       'class_pay' => $classPay, 'ops_pay' => $opsPay,
-      'transport' => $transport, 'total' => $classPay + $opsPay + $transport,
+      'transport' => $transport, 'advance' => $advance,
+      'total' => $classPay + $opsPay + $transport + $advance,
     ];
   }
   return $out;
@@ -455,17 +458,60 @@ function payslips_table_exists() {
   return $ok;
 }
 
+// payslips の列の有無（未マイグレーションの advance 列などに強くする）
+function payslips_has_column($name) {
+  static $cols = null;
+  if ($cols === null) {
+    $cols = [];
+    try { foreach (db()->query("SHOW COLUMNS FROM payslips")->fetchAll() as $c) { $cols[$c['Field']] = true; } }
+    catch (Throwable $e) { $cols = []; }
+  }
+  return isset($cols[$name]);
+}
+
+// ------------------------------------------------------------
+// 立替金（staff_advances）：給与計算で講師×月ごとに手入力する金額
+// ------------------------------------------------------------
+function staff_advances_table_exists() {
+  static $ok = null;
+  if ($ok === null) {
+    try { db()->query("SELECT 1 FROM staff_advances LIMIT 1"); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+  }
+  return $ok;
+}
+// その月の立替金 [staff_id => amount]
+function advances_for_month($month) {
+  if (!staff_advances_table_exists()) return [];
+  $m = [];
+  try {
+    $st = db()->prepare("SELECT staff_id, amount FROM staff_advances WHERE month=?");
+    $st->execute([$month]);
+    foreach ($st->fetchAll() as $r) { $m[(int)$r['staff_id']] = (int)$r['amount']; }
+  } catch (Throwable $e) {}
+  return $m;
+}
+// 立替金の保存（月ごとに上書き）。テーブルが無ければ false。
+function set_staff_advance($staffId, $month, $amount) {
+  if (!staff_advances_table_exists()) return false;
+  db()->prepare("INSERT INTO staff_advances (tenant_id, staff_id, month, amount) VALUES (1,?,?,?)
+                 ON DUPLICATE KEY UPDATE amount=VALUES(amount)")
+      ->execute([(int)$staffId, $month, max(0, (int)$amount)]);
+  return true;
+}
+
 // その月の明細を発行（発行時点の金額をスナップショット upsert）。
 //   $onlyStaffId 指定で個別発行。返り値: 発行した [['staff'=>, 'data'=>], ...]
 function issue_payslips($month, $issuedBy, $onlyStaffId = null, $allowedIds = null) {
   $rows = compute_month_payroll($month);
+  $hasAdv = payslips_has_column('advance'); // 未マイグレーションでも発行できるように
   $up = db()->prepare(
     "INSERT INTO payslips
-       (tenant_id,staff_id,month,days,class_min,ops_min,class_rate,ops_rate,class_pay,ops_pay,transport,total,issued_at,issued_by)
-     VALUES (1,?,?,?,?,?,?,?,?,?,?,?,NOW(),?)
+       (tenant_id,staff_id,month,days,class_min,ops_min,class_rate,ops_rate,class_pay,ops_pay,transport," . ($hasAdv ? 'advance,' : '') . "total,issued_at,issued_by)
+     VALUES (1,?,?,?,?,?,?,?,?,?,?," . ($hasAdv ? '?,' : '') . "?,NOW(),?)
      ON DUPLICATE KEY UPDATE days=VALUES(days),class_min=VALUES(class_min),ops_min=VALUES(ops_min),
        class_rate=VALUES(class_rate),ops_rate=VALUES(ops_rate),class_pay=VALUES(class_pay),ops_pay=VALUES(ops_pay),
-       transport=VALUES(transport),total=VALUES(total),issued_at=NOW(),issued_by=VALUES(issued_by)");
+       transport=VALUES(transport)," . ($hasAdv ? 'advance=VALUES(advance),' : '') . "total=VALUES(total),issued_at=NOW(),issued_by=VALUES(issued_by)");
   $issued = [];
   foreach ($rows as $r) {
     $sid = (int)$r['staff']['id'];
@@ -473,8 +519,12 @@ function issue_payslips($month, $issuedBy, $onlyStaffId = null, $allowedIds = nu
     if (is_array($allowedIds) && !in_array($sid, $allowedIds, true)) continue; // 担当教室スコープ
     // 一括時は給与対象外（use_payroll=0）を除外。個別時は明示操作なので発行する。
     if ($onlyStaffId === null && array_key_exists('use_payroll', $r['staff']) && empty($r['staff']['use_payroll'])) continue;
-    $up->execute([$sid, $month, $r['days'], $r['class_min'], $r['ops_min'], $r['class_rate'], $r['ops_rate'],
-                  $r['class_pay'], $r['ops_pay'], $r['transport'], $r['total'], (int)$issuedBy]);
+    $params = [$sid, $month, $r['days'], $r['class_min'], $r['ops_min'], $r['class_rate'], $r['ops_rate'],
+               $r['class_pay'], $r['ops_pay'], $r['transport']];
+    if ($hasAdv) { $params[] = (int)($r['advance'] ?? 0); }
+    $params[] = $r['total'];
+    $params[] = (int)$issuedBy;
+    $up->execute($params);
     $issued[] = ['staff' => $r['staff'], 'data' => $r];
   }
   return $issued;
@@ -631,6 +681,7 @@ function build_payslip_pdf($slip, $staffName) {
   $row('授業給与', $fmt($slip['class_pay']) . ' 円');
   $row('運営給与', $fmt($slip['ops_pay']) . ' 円');
   $row('交通費', $fmt($slip['transport']) . ' 円');
+  $row('立替金', $fmt($slip['advance'] ?? 0) . ' 円');
   $row('支給合計', $fmt($slip['total']) . ' 円', true);
   $pdf->Ln(6);
   $pdf->SetFont('ipag', '', 9);
