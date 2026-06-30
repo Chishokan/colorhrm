@@ -73,6 +73,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       db()->rollBack();
       $err = '一括確定に失敗しました: ' . $e->getMessage();
     }
+  } elseif ($action === 'add_ctpl') {
+    if (!confirm_templates_table_exists()) { $err = '確定用テンプレートのテーブルがありません。migrations/023_confirm_templates.sql を実行してください。'; }
+    else {
+      $label = trim($_POST['label'] ?? '');
+      $st = trim($_POST['start_time'] ?? ''); $et = trim($_POST['end_time'] ?? '');
+      if (!preg_match('/^\d{1,2}:\d{2}$/', $st) || !preg_match('/^\d{1,2}:\d{2}$/', $et) || shift_minutes($st, $et) <= 0) {
+        $err = '開始・終了（終了は開始より後）を正しく入力してください。';
+      } else {
+        $c = db()->prepare("SELECT COUNT(*) FROM confirm_templates WHERE user_id=?"); $c->execute([(int)$user['id']]); $cnt = (int)$c->fetchColumn();
+        if ($cnt >= 30) { $err = 'テンプレートは30件まで登録できます。'; }
+        else {
+          if ($label === '') { $label = $st . '-' . $et; }
+          db()->prepare("INSERT INTO confirm_templates (tenant_id,user_id,label,start_time,end_time,sort_order) VALUES (1,?,?,?,?,?)")
+              ->execute([(int)$user['id'], mb_substr($label, 0, 50), $st, $et, $cnt]);
+          $flash = '確定用テンプレートを追加しました。';
+        }
+      }
+    }
+  } elseif ($action === 'del_ctpl') {
+    db()->prepare("DELETE FROM confirm_templates WHERE id=? AND user_id=?")->execute([(int)($_POST['id'] ?? 0), (int)$user['id']]);
+    $flash = 'テンプレートを削除しました。';
   }
 }
 
@@ -97,6 +118,14 @@ foreach ($pending as $a) {
 asort($pendStaff, SORT_FLAG_CASE | SORT_STRING);
 $pendRooms = array_keys($pendRooms); sort($pendRooms, SORT_STRING);
 
+// 確定用 時間テンプレート（ログイン中スタッフ個人）
+$ctpls = confirm_templates_for((int)$user['id']);
+$ctplOptsHtml = '';
+foreach ($ctpls as $t) {
+  $ctplOptsHtml .= '<option data-st="' . h(hm($t['start_time'])) . '" data-et="' . h(hm($t['end_time'])) . '">'
+                 . h($t['label']) . '（' . h(hm($t['start_time'])) . '〜' . h(hm($t['end_time'])) . '）</option>';
+}
+
 render_header('シフト申請・確定', $user, 'shifts_admin.php');
 ?>
   <div class="container py-4">
@@ -113,6 +142,33 @@ render_header('シフト申請・確定', $user, 'shifts_admin.php');
     </div>
     <?php if ($flash): ?><div class="alert alert-success py-2"><?= h($flash) ?></div><?php endif; ?>
     <?php if ($err): ?><div class="alert alert-danger py-2"><?= h($err) ?></div><?php endif; ?>
+
+    <?php if (confirm_templates_table_exists()): ?>
+    <div class="card shadow-sm mb-3">
+      <div class="card-header">確定用 時間テンプレート <span class="text-muted small">よく使う確定時間を登録すると、各行の「テンプレ」から選んで入力できます（直接入力も可）</span></div>
+      <div class="card-body">
+        <?php if ($ctpls): ?>
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            <?php foreach ($ctpls as $t): ?>
+              <span class="border rounded d-inline-flex align-items-center gap-2 px-2 py-1 bg-light">
+                <span class="small"><strong><?= h($t['label']) ?></strong> <span class="text-muted"><?= h(hm($t['start_time'])) ?>〜<?= h(hm($t['end_time'])) ?></span></span>
+                <form method="post" class="d-inline" onsubmit="return confirm('このテンプレートを削除しますか？');"><?= csrf_field() ?><input type="hidden" name="action" value="del_ctpl"><input type="hidden" name="id" value="<?= (int)$t['id'] ?>"><button class="btn-close" style="font-size:9px" aria-label="削除"></button></form>
+              </span>
+            <?php endforeach; ?>
+          </div>
+        <?php else: ?>
+          <p class="small text-muted">まだテンプレートがありません。よく使う確定時間を追加してください。</p>
+        <?php endif; ?>
+        <form method="post" class="row g-2 align-items-end">
+          <?= csrf_field() ?><input type="hidden" name="action" value="add_ctpl">
+          <div class="col-auto"><label class="form-label small mb-0">名称（任意）</label><input name="label" class="form-control form-control-sm" placeholder="例：通常授業" maxlength="50" style="max-width:160px"></div>
+          <div class="col-auto"><label class="form-label small mb-0">開始</label><input type="time" name="start_time" class="form-control form-control-sm" required></div>
+          <div class="col-auto"><label class="form-label small mb-0">終了</label><input type="time" name="end_time" class="form-control form-control-sm" required></div>
+          <div class="col-auto"><button class="btn btn-sm btn-outline-primary">テンプレ追加</button></div>
+        </form>
+      </div>
+    </div>
+    <?php endif; ?>
 
     <div class="card shadow-sm mb-3">
       <div class="card-header d-flex justify-content-between align-items-center">
@@ -165,6 +221,7 @@ render_header('シフト申請・確定', $user, 'shifts_admin.php');
                 <td>
                   <form method="post" class="d-flex gap-1 flex-wrap align-items-center" id="cf<?= (int)$a['id'] ?>">
                     <?= csrf_field() ?><input type="hidden" name="action" value="confirm"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
+                    <?php if ($ctpls): ?><select class="form-select form-select-sm ctpl-sel" style="max-width:150px" onchange="applyCtpl(this)" title="テンプレから時間を入力"><option value="">テンプレ…</option><?= $ctplOptsHtml ?></select><?php endif; ?>
                     <input type="time" name="start_time" value="<?= h(hm($a['start_time'])) ?>" class="form-control form-control-sm" style="max-width:92px" title="確定 開始時刻">
                     <span class="text-muted">〜</span>
                     <input type="time" name="end_time" value="<?= h(hm($a['end_time'])) ?>" class="form-control form-control-sm" style="max-width:92px" title="確定 終了時刻">
@@ -215,6 +272,15 @@ render_header('シフト申請・確定', $user, 'shifts_admin.php');
           fc&&fc.addEventListener('click',function(){ if(fs)fs.value=''; if(fr)fr.value=''; if(fd)fd.value=''; apply(); });
           restore(); apply();   // 保存後の再読み込みでも絞り込みを維持
         })();
+        // 行ごとにテンプレから確定時間を入力（直接入力も可）
+        function applyCtpl(sel){
+          var opt=sel.options[sel.selectedIndex]; if(!opt||!opt.value){ return; }
+          var f=sel.closest('form'); if(!f){ sel.selectedIndex=0; return; }
+          var s=f.querySelector('input[name=start_time]'), e=f.querySelector('input[name=end_time]');
+          if(s) s.value=opt.getAttribute('data-st')||'';
+          if(e) e.value=opt.getAttribute('data-et')||'';
+          sel.selectedIndex=0;
+        }
         // 「表示中をまとめて確定」：絞り込み表示中の行を、入力した時間・教室・授業分で確定
         function bulkConfirm(){
           var rows=document.querySelectorAll('#pendingBody tr[data-staff]'), list=[];
