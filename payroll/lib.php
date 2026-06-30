@@ -309,6 +309,21 @@ function shift_templates_for($staffId) {
   } catch (Throwable $e) { return []; }
 }
 
+// 確定用 時間テンプレート（スタッフ個人ごと）。シフト申請・確定で使用。
+function confirm_templates_table_exists() {
+  static $ok = null;
+  if ($ok === null) { try { db()->query("SELECT 1 FROM confirm_templates LIMIT 1"); $ok = true; } catch (Throwable $e) { $ok = false; } }
+  return $ok;
+}
+function confirm_templates_for($userId) {
+  if (!confirm_templates_table_exists()) return [];
+  try {
+    $st = db()->prepare("SELECT * FROM confirm_templates WHERE user_id=? ORDER BY sort_order, id");
+    $st->execute([(int)$userId]);
+    return $st->fetchAll();
+  } catch (Throwable $e) { return []; }
+}
+
 // 1コマ分の内訳。休憩は運営（非授業）時間から差し引く。
 //   gross=拘束(開始〜終了)、break=休憩、class=授業、ops=運営、net=実働(=class+ops)。
 function shift_work_breakdown($start, $end, $classMin) {
