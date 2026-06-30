@@ -168,6 +168,8 @@ render_header('シフト申請・確定', $user, 'shifts_admin.php');
         </form>
       </div>
     </div>
+    <?php else: ?>
+    <div class="alert alert-warning py-2 small">「確定用 時間テンプレート」を使うには <code>migrations/023_confirm_templates.sql</code> を実行してください（未実行のため非表示になっています）。</div>
     <?php endif; ?>
 
     <div class="card shadow-sm mb-3">
