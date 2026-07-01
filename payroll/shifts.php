@@ -197,21 +197,22 @@ render_header('シフト可能登録', $user, 'shifts.php');
       <div class="card-header">確定シフト（<?= h($month) ?>）</div>
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
-          <thead class="table-light"><tr><th>日付</th><th>教室</th><th>時間</th><th class="text-end">稼働</th><th class="text-end">授業</th><th class="text-end">運営</th><th>メモ</th></tr></thead>
+          <thead class="table-light"><tr><th>日付</th><th>教室</th><th>時間</th><th class="text-end">稼働</th><th class="text-end">休憩</th><th class="text-end">授業</th><th class="text-end">運営</th><th>メモ</th></tr></thead>
           <tbody>
-            <?php $tt = 0; $tc = 0; foreach ($days as $d): $tot = shift_minutes($d['start_time'], $d['end_time']); $cls = min((int)$d['class_minutes'], $tot); $ops = $tot - $cls; $tt += $tot; $tc += $cls; ?>
+            <?php $tt = 0; $tc = 0; $to = 0; foreach ($days as $d): $bd = shift_work_breakdown($d['start_time'], $d['end_time'], $d['class_minutes'], $d['break_minutes'] ?? null); $tt += $bd['net']; $tc += $bd['class']; $to += $bd['ops']; ?>
               <tr>
                 <td><?= h($d['work_date']) ?></td>
                 <td class="small"><?= h($d['room'] ?? '') ?: '—' ?></td>
                 <td><?= h(hm($d['start_time'])) ?>〜<?= h(hm($d['end_time'])) ?></td>
-                <td class="text-end"><?= h(fmt_hm($tot)) ?></td>
-                <td class="text-end"><?= h(fmt_hm($cls)) ?></td>
-                <td class="text-end"><?= h(fmt_hm($ops)) ?></td>
+                <td class="text-end" title="拘束 <?= h(fmt_hm($bd['gross'])) ?> − 休憩 <?= (int)$bd['break'] ?>分"><?= h(fmt_hm($bd['net'])) ?></td>
+                <td class="text-end"><?= $bd['break'] ? h(fmt_hm($bd['break'])) : '—' ?></td>
+                <td class="text-end"><?= h(fmt_hm($bd['class'])) ?></td>
+                <td class="text-end"><?= h(fmt_hm($bd['ops'])) ?></td>
                 <td class="small text-muted"><?= h($d['note']) ?></td>
               </tr>
             <?php endforeach; ?>
-            <?php if (!$days): ?><tr><td colspan="7" class="text-center text-muted py-3">確定シフトはまだありません。</td></tr>
-            <?php else: ?><tr class="table-light fw-bold"><td colspan="3" class="text-end">合計</td><td class="text-end"><?= h(fmt_hm($tt)) ?></td><td class="text-end"><?= h(fmt_hm($tc)) ?></td><td class="text-end"><?= h(fmt_hm($tt - $tc)) ?></td><td></td></tr><?php endif; ?>
+            <?php if (!$days): ?><tr><td colspan="8" class="text-center text-muted py-3">確定シフトはまだありません。</td></tr>
+            <?php else: ?><tr class="table-light fw-bold"><td colspan="3" class="text-end">合計</td><td class="text-end"><?= h(fmt_hm($tt)) ?></td><td class="text-end">—</td><td class="text-end"><?= h(fmt_hm($tc)) ?></td><td class="text-end"><?= h(fmt_hm($to)) ?></td><td></td></tr><?php endif; ?>
           </tbody>
         </table>
       </div>

@@ -283,9 +283,9 @@ function shift_minutes($start, $end) {
   return (int) round(($e - $s) / 60);
 }
 
-// 休憩控除（分）。拘束時間が6時間（360分）を超える場合は45分を自動控除。
+// 休憩の自動控除（分）。拘束時間が6時間（360分）を超える場合は60分を自動控除。
 function shift_break_minutes($grossMinutes) {
-  return (int)$grossMinutes > 360 ? 45 : 0;
+  return (int)$grossMinutes > 360 ? 60 : 0;
 }
 
 // ------------------------------------------------------------
@@ -324,11 +324,13 @@ function confirm_templates_for($userId) {
   } catch (Throwable $e) { return []; }
 }
 
-// 1コマ分の内訳。休憩は運営（非授業）時間から差し引く。
-//   gross=拘束(開始〜終了)、break=休憩、class=授業、ops=運営、net=実働(=class+ops)。
-function shift_work_breakdown($start, $end, $classMin) {
+// 1コマ分の内訳。休憩は運営（非授業）時間から差し引き、給料対象（net）から除外する。
+//   gross=拘束(開始〜終了)、break=休憩、class=授業、ops=運営、net=実働(=class+ops=給料対象)。
+//   $breakOverride が数値なら休憩をその分に上書き（null/''は自動ルール＝6時間超60分）。
+function shift_work_breakdown($start, $end, $classMin, $breakOverride = null) {
   $gross = shift_minutes($start, $end);
-  $brk   = shift_break_minutes($gross);
+  $brk   = ($breakOverride === null || $breakOverride === '') ? shift_break_minutes($gross) : max(0, (int)$breakOverride);
+  if ($brk > $gross) $brk = $gross;
   $cls   = min(max(0, (int)$classMin), $gross);
   $ops   = max(0, $gross - $brk - $cls);
   return ['gross' => $gross, 'break' => $brk, 'class' => $cls, 'ops' => $ops, 'net' => $cls + $ops];
@@ -465,11 +467,13 @@ function compute_month_payroll($month) {
   $hasTM = isset($staffCols['transport_mode']);
   $sdCols = []; foreach (db()->query("SHOW COLUMNS FROM shift_days")->fetchAll() as $c) { $sdCols[$c['Field']] = true; }
   $hasNT = isset($sdCols['no_transport']);
+  $hasBreak = isset($sdCols['break_minutes']);
   $sql = "SELECT s.id, s.name, s.color_rank, s.departments"
        . ($hasUsePayroll ? ", s.use_payroll" : "")
        . ($hasTM ? ", s.transport_mode, s.transport_daily" : "")
        . " , sd.work_date, sd.start_time, sd.end_time, sd.class_minutes"
        . ($hasNT ? ", sd.no_transport" : "")
+       . ($hasBreak ? ", sd.break_minutes" : "")
        . " FROM shift_days sd JOIN staff s ON s.id = sd.staff_id"
        . " WHERE DATE_FORMAT(sd.work_date,'%Y-%m') = ?"
        . " ORDER BY s.name, sd.work_date";
@@ -499,8 +503,8 @@ function compute_month_payroll($month) {
         'days' => [], 'by' => [],
       ];
     }
-    // 拘束6時間超は45分休憩を運営から控除（shift_work_breakdown）
-    $bd = shift_work_breakdown($r['start_time'], $r['end_time'], $r['class_minutes']);
+    // 休憩を運営から控除（既定＝拘束6時間超60分／シフトごとに上書き可）。給料対象から除外。
+    $bd = shift_work_breakdown($r['start_time'], $r['end_time'], $r['class_minutes'], $hasBreak ? $r['break_minutes'] : null);
     // その勤務日に有効なカラーで時給を判定（適用日反映）
     $color = color_on_date($histMap[$sid] ?? null, $r['work_date'], $r['color_rank']);
     $rate  = $rateFor($r['departments'], $color);

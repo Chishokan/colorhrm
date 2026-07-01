@@ -25,6 +25,7 @@ $sdCols = [];
 foreach (db()->query("SHOW COLUMNS FROM shift_days")->fetchAll() as $c) { $sdCols[$c['Field']] = true; }
 $hasRoom = isset($sdCols['room']);
 $hasNoTransport = isset($sdCols['no_transport']);
+$hasBreak = isset($sdCols['break_minutes']);
 $teacherRooms = teacher_rooms_map();
 
 $flash = ''; $err = '';
@@ -62,6 +63,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       }
       if ($hasNoTransport) {
         db()->prepare("UPDATE shift_days SET no_transport=? WHERE id=?")->execute([isset($_POST['no_transport']) ? 1 : 0, $id]);
+      }
+      if ($hasBreak) {
+        // 空欄＝自動（6時間超60分）。自動値と同じなら NULL 保存で自動追従。
+        $bkRaw = trim((string)($_POST['break_minutes'] ?? ''));
+        $auto  = shift_break_minutes($tot);
+        $bk = ($bkRaw === '') ? null : max(0, (int)$bkRaw);
+        if ($bk !== null && $bk === $auto) { $bk = null; }
+        db()->prepare("UPDATE shift_days SET break_minutes=? WHERE id=?")->execute([$bk, $id]);
       }
       $flash = '確定シフトを更新しました。';
     } else { $err = '終了は開始より後、または権限のあるシフトを指定してください。'; }
@@ -174,9 +183,9 @@ render_header('打刻・確定シフト', $user, 'shifts_done.php');
       <?php endif; ?>
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
-          <thead class="table-light"><tr><th>講師</th><th>日付</th><th>教室</th><th style="width:104px">開始</th><th style="width:104px">終了</th><th class="text-end">稼働</th><th style="width:104px">授業(分)</th><th class="text-end">運営</th><th>出勤</th><th>退勤</th><th>判定</th><?php if ($hasNoTransport): ?><th title="送迎等で交通費なしの日">送迎</th><?php endif; ?><th></th></tr></thead>
+          <thead class="table-light"><tr><th>講師</th><th>日付</th><th>教室</th><th style="width:104px">開始</th><th style="width:104px">終了</th><th class="text-end">稼働</th><?php if ($hasBreak): ?><th style="width:88px" title="拘束6時間超は既定60分。変更可。">休憩(分)</th><?php endif; ?><th style="width:104px">授業(分)</th><th class="text-end">運営</th><th>出勤</th><th>退勤</th><th>判定</th><?php if ($hasNoTransport): ?><th title="送迎等で交通費なしの日">送迎</th><?php endif; ?><th></th></tr></thead>
           <tbody id="daysBody">
-            <?php foreach ($days as $d): $bd = shift_work_breakdown($d['start_time'],$d['end_time'],$d['class_minutes']);
+            <?php foreach ($days as $d): $bd = shift_work_breakdown($d['start_time'],$d['end_time'],$d['class_minutes'], $hasBreak ? $d['break_minutes'] : null);
               $att = $attBy[$d['staff_id'].'|'.$d['work_date']] ?? null;
               ?>
               <tr data-staff="<?= (int)$d['staff_id'] ?>" data-date="<?= h($d['work_date']) ?>" data-room="<?= h($d['room'] ?? '') ?>">
@@ -193,7 +202,8 @@ render_header('打刻・確定シフト', $user, 'shifts_done.php');
                 </td>
                 <td><input form="ud<?= (int)$d['id'] ?>" type="time" name="start_time" value="<?= h(hm($d['start_time'])) ?>" class="form-control form-control-sm"></td>
                 <td><input form="ud<?= (int)$d['id'] ?>" type="time" name="end_time" value="<?= h(hm($d['end_time'])) ?>" class="form-control form-control-sm"></td>
-                <td class="text-end"<?= $bd['break'] ? ' title="拘束 ' . h(fmt_hm($bd['gross'])) . ' − 休憩45分"' : '' ?>><?= h(fmt_hm($bd['net'])) ?><?php if ($bd['break']): ?><span class="text-muted" style="font-size:10px"> 休憩45</span><?php endif; ?></td>
+                <td class="text-end" title="拘束 <?= h(fmt_hm($bd['gross'])) ?> − 休憩 <?= (int)$bd['break'] ?>分"><?= h(fmt_hm($bd['net'])) ?></td>
+                <?php if ($hasBreak): ?><td><input form="ud<?= (int)$d['id'] ?>" type="number" name="break_minutes" value="<?= (int)$bd['break'] ?>" min="0" max="<?= (int)$bd['gross'] ?>" class="form-control form-control-sm" title="空欄で自動（6時間超60分）"></td><?php endif; ?>
                 <td><input form="ud<?= (int)$d['id'] ?>" type="number" name="class_minutes" value="<?= (int)$d['class_minutes'] ?>" min="0" max="<?= $bd['gross'] ?>" class="form-control form-control-sm"></td>
                 <td class="text-end"><?= h(fmt_hm($bd['ops'])) ?></td>
                 <td class="small"><?= $att && !empty($att['clock_in']) ? h(hm($att['clock_in'])).'<br><span class="text-muted">'.h($att['in_room']).'</span>' : '—' ?></td>
@@ -206,7 +216,7 @@ render_header('打刻・確定シフト', $user, 'shifts_done.php');
                 </td>
               </tr>
             <?php endforeach; ?>
-            <?php if (!$days): ?><tr><td colspan="<?= $hasNoTransport ? 13 : 12 ?>" class="text-center text-muted py-3">確定シフトはありません。</td></tr><?php endif; ?>
+            <?php if (!$days): ?><tr><td colspan="<?= 12 + ($hasNoTransport ? 1 : 0) + ($hasBreak ? 1 : 0) ?>" class="text-center text-muted py-3">確定シフトはありません。</td></tr><?php endif; ?>
           </tbody>
         </table>
       </div>

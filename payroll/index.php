@@ -26,25 +26,26 @@ $next  = date('Y-m', strtotime($month . '-01 +1 month'));
 
 // 確定シフト表（共通描画）。$attBy（[staff_id|date]=>打刻行）を渡すと 出勤/退勤/判定 列を追加。
 function render_month_shifts($days, $hasRoom, $names = null, $attBy = null) {
-  $cols = 5 + ($names !== null ? 1 : 0) + ($hasRoom ? 1 : 0) + ($attBy !== null ? 3 : 0);
+  $cols = 6 + ($names !== null ? 1 : 0) + ($hasRoom ? 1 : 0) + ($attBy !== null ? 3 : 0);
   ?>
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0">
       <thead class="table-light"><tr>
         <?php if ($names !== null): ?><th>講師</th><?php endif; ?>
         <th>日付</th><?php if ($hasRoom): ?><th>教室</th><?php endif; ?><th>時間</th>
-        <th class="text-end">稼働</th><th class="text-end">授業</th><th class="text-end">運営</th>
+        <th class="text-end">稼働</th><th class="text-end">休憩</th><th class="text-end">授業</th><th class="text-end">運営</th>
         <?php if ($attBy !== null): ?><th>出勤</th><th>退勤</th><th>判定</th><?php endif; ?>
       </tr></thead>
       <tbody>
-        <?php $tt = 0; foreach ($days as $d): $bd = shift_work_breakdown($d['start_time'], $d['end_time'], $d['class_minutes']); $tt += $bd['net'];
+        <?php $tt = 0; foreach ($days as $d): $bd = shift_work_breakdown($d['start_time'], $d['end_time'], $d['class_minutes'], $d['break_minutes'] ?? null); $tt += $bd['net'];
           $att = $attBy !== null ? ($attBy[$d['staff_id'] . '|' . $d['work_date']] ?? null) : null; ?>
           <tr>
             <?php if ($names !== null): ?><td><?= h($names[(int)$d['staff_id']] ?? ('#' . $d['staff_id'])) ?></td><?php endif; ?>
             <td class="small"><?= h($d['work_date']) ?></td>
             <?php if ($hasRoom): ?><td class="small"><?= h($d['room'] ?? '') ?: '—' ?></td><?php endif; ?>
             <td class="small"><?= h(hm($d['start_time'])) ?>〜<?= h(hm($d['end_time'])) ?></td>
-            <td class="text-end small"<?= $bd['break'] ? ' title="拘束 ' . h(fmt_hm($bd['gross'])) . ' − 休憩45分"' : '' ?>><?= h(fmt_hm($bd['net'])) ?><?php if ($bd['break']): ?><span class="text-muted" style="font-size:10px"> 休憩45</span><?php endif; ?></td>
+            <td class="text-end small" title="拘束 <?= h(fmt_hm($bd['gross'])) ?> − 休憩 <?= (int)$bd['break'] ?>分"><?= h(fmt_hm($bd['net'])) ?></td>
+            <td class="text-end small"><?= $bd['break'] ? h(fmt_hm($bd['break'])) : '—' ?></td>
             <td class="text-end small"><?= h(fmt_hm($bd['class'])) ?></td>
             <td class="text-end small"><?= h(fmt_hm($bd['ops'])) ?></td>
             <?php if ($attBy !== null): ?>
