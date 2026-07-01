@@ -127,7 +127,7 @@ render_header('給与計算', $user, 'payroll.php');
     <?php if ($flash): ?><div class="alert alert-success py-2"><?= h($flash) ?></div><?php endif; ?>
     <?php if ($err): ?><div class="alert alert-danger py-2"><?= h($err) ?></div><?php endif; ?>
     <?php if (!staff_advances_table_exists()): ?><div class="alert alert-warning py-2 small">立替金を保存するには <code>migrations/017_staff_advances.sql</code> を実行してください（未実施の間は立替金は0で計算されます）。</div><?php endif; ?>
-    <p class="text-muted small">確定シフト（シフト申請・確定で確定したもの）と時給表から計算します。<strong>拘束6時間超は45分の休憩を運営時間から自動控除</strong>。授業給与=round(授業分/60×授業時給)、運営給与=round(運営分/60×運営時給)、交通費は講師の区分で算定（徒歩/定期=0／公共交通=1日額×対象日数で月8日以下は半額・9日以上は全額／車・バイク=≤5日:日数×200・超過:切上げ(日数/5)×1000）。送迎等で<strong>交通費なしの日</strong>は「打刻・確定シフト」で日別に指定。<strong>立替金</strong>は講師ごとに手入力（合計に加算）。</p>
+    <p class="text-muted small">確定シフト（シフト申請・確定で確定したもの）と時給表から計算します。<strong>拘束6時間超は60分の休憩を運営時間から自動控除（シフトごとに変更可）</strong>。授業給与=round(授業分/60×授業時給)、運営給与=round(運営分/60×運営時給)、交通費は講師の区分で算定（徒歩/定期=0／公共交通=1日額×対象日数で月8日以下は半額・9日以上は全額／車・バイク=≤5日:日数×200・超過:切上げ(日数/5)×1000）。送迎等で<strong>交通費なしの日</strong>は「打刻・確定シフト」で日別に指定。<strong>立替金</strong>は講師ごとに手入力（合計に加算）。</p>
 
     <div class="card shadow-sm">
       <div class="table-responsive">
