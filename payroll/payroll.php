@@ -76,11 +76,11 @@ if (($_GET['export'] ?? '') === 'csv') {
   header('Content-Disposition: attachment; filename="payroll_' . $month . '.csv"');
   echo "\xEF\xBB\xBF"; // Excel 用 BOM
   $out = fopen('php://output', 'w');
-  fputcsv($out, ['講師', 'カラー', '部門', '勤務日数', '授業分', '運営分', '授業時給', '運営時給', '授業給与', '運営給与', '交通費', '立替金', '合計']);
+  fputcsv($out, ['講師', 'カラー', '部門', '勤務日数', '授業分', '運営分', '休憩分', '授業時給', '運営時給', '授業給与', '運営給与', '交通費', '立替金', '合計']);
   foreach ($rows as $r) {
     fputcsv($out, [
       $r['staff']['name'], $r['staff']['color_rank'], $r['staff']['departments'],
-      $r['days'], $r['class_min'], $r['ops_min'], $r['class_rate'], $r['ops_rate'],
+      $r['days'], $r['class_min'], $r['ops_min'], ($r['break_min'] ?? 0), $r['class_rate'], $r['ops_rate'],
       $r['class_pay'], $r['ops_pay'], $r['transport'], ($r['advance'] ?? 0), $r['total'],
     ]);
   }
@@ -135,7 +135,7 @@ render_header('給与計算', $user, 'payroll.php');
           <thead class="table-light">
             <tr>
               <th>講師</th><th>カラー</th><th class="text-end">勤務日数</th>
-              <th class="text-end">授業</th><th class="text-end">運営</th>
+              <th class="text-end">授業</th><th class="text-end">運営</th><th class="text-end">休憩</th>
               <th class="text-end">授業給与</th><th class="text-end">運営給与</th>
               <th class="text-end">交通費</th><th class="text-end" style="min-width:120px">立替金</th><th class="text-end">合計</th><th>明細</th>
             </tr>
@@ -148,6 +148,7 @@ render_header('給与計算', $user, 'payroll.php');
                 <td class="text-end"><?= (int)$r['days'] ?>日</td>
                 <td class="text-end small text-muted"><?= h(fmt_hm($r['class_min'])) ?></td>
                 <td class="text-end small text-muted"><?= h(fmt_hm($r['ops_min'])) ?></td>
+                <td class="text-end small text-muted"><?= ($r['break_min'] ?? 0) ? h(fmt_hm($r['break_min'])) : '—' ?></td>
                 <td class="text-end">¥<?= number_format($r['class_pay']) ?></td>
                 <td class="text-end">¥<?= number_format($r['ops_pay']) ?></td>
                 <td class="text-end">¥<?= number_format($r['transport']) ?></td>
@@ -173,10 +174,10 @@ render_header('給与計算', $user, 'payroll.php');
               </tr>
             <?php endforeach; ?>
             <?php if (!$rows): ?>
-              <tr><td colspan="11" class="text-center text-muted py-4">この月の確定シフトはありません。<a href="shifts_admin.php?m=<?= h($month) ?>">シフト申請・確定</a>で確定してください。</td></tr>
+              <tr><td colspan="12" class="text-center text-muted py-4">この月の確定シフトはありません。<a href="shifts_admin.php?m=<?= h($month) ?>">シフト申請・確定</a>で確定してください。</td></tr>
             <?php else: ?>
               <tr class="table-light fw-bold">
-                <td colspan="5" class="text-end">合計</td>
+                <td colspan="6" class="text-end">合計</td>
                 <td class="text-end">¥<?= number_format($sumClass) ?></td>
                 <td class="text-end">¥<?= number_format($sumOps) ?></td>
                 <td class="text-end">¥<?= number_format($sumTrans) ?></td>

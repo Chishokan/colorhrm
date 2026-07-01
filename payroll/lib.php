@@ -500,11 +500,12 @@ function compute_month_payroll($month) {
                     'use_payroll' => $hasUsePayroll ? $r['use_payroll'] : 1],
         'tmode' => $hasTM ? ($r['transport_mode'] ?: 'car') : 'car',
         'tdaily' => $hasTM ? (int)$r['transport_daily'] : 0,
-        'days' => [], 'by' => [],
+        'days' => [], 'by' => [], 'break_min' => 0,
       ];
     }
     // 休憩を運営から控除（既定＝拘束6時間超60分／シフトごとに上書き可）。給料対象から除外。
     $bd = shift_work_breakdown($r['start_time'], $r['end_time'], $r['class_minutes'], $hasBreak ? $r['break_minutes'] : null);
+    $agg[$sid]['break_min'] += $bd['break'];
     // その勤務日に有効なカラーで時給を判定（適用日反映）
     $color = color_on_date($histMap[$sid] ?? null, $r['work_date'], $r['color_rank']);
     $rate  = $rateFor($r['departments'], $color);
@@ -540,7 +541,7 @@ function compute_month_payroll($month) {
     $advance  = (int)($advances[(int)$a['staff']['id']] ?? 0);
     $out[] = [
       'staff' => $a['staff'], 'days' => $days,
-      'class_min' => $classMin, 'ops_min' => $opsMin,
+      'class_min' => $classMin, 'ops_min' => $opsMin, 'break_min' => (int)$a['break_min'],
       'class_rate' => $repRate['class_rate'], 'ops_rate' => $repRate['ops_rate'],
       'class_pay' => $classPay, 'ops_pay' => $opsPay,
       'breakdown' => $breakdown,
